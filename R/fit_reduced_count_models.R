@@ -12,17 +12,57 @@
 #' pop
 #' @export
 gen_Nmix_closed <- function(num_sites,num_times,lambda,pdet) {
-  U = num_sites
-  T = num_times
+  U    = num_sites
+  T    = num_times
   lamb = lambda
 
   Ntemp <- c(rep(rpois(n=U,lambda = lamb),times=T))
+  Ni    <- matrix(data=Ntemp, nrow = U, ncol = T)
+
+  nit   <- Ni
+  nit[] <- vapply(Ni, function(x) { rbinom(size = x, n = 1, prob = pdet) }, numeric(1))
+
+  return(list(Ni=Ni, nit=nit))
+}
+
+
+#' Generate a population/observation pair with the structure of an open N-mixture model
+#'
+#' @param num_sites The number of observation sites.
+#' @param num_times The number of sampling occasions.
+#' @param lambda    The population rate parameter (\eqn{N_i \sim Poisson(\lambda)}).
+#' @param pdet      The probability of detection \eqn{p} (\eqn{n_{it} \sim Binomial(N_i,p)}).
+#' @param omega     The probability of survival (\eqn{S_{it} \sim Binomial(N_{it}, \omega)}).
+#' @param gamma     The recruitment rate parameter (\eqn{G_{it} \sim Poisson(\gamma)}).
+#' @return A list object with two named matrices. Nit contains the total population per site
+#'         (each row represents a site, each column a sampling occasion). nit contains the observed
+#'         counts (rows=sites, columns=sampling occasions).
+#' @examples
+#' pop <- gen_Nmix_open(num_sites = 5,
+#'                      num_times = 10,
+#'                      lambda = 50,
+#'                      pdet = 0.4,
+#'                      omega = 0.8,
+#'                      gamma = 4)
+#' pop
+#' @export
+gen_Nmix_open <- function(num_sites,num_times,lambda,pdet,omega,gamma) {
+  U    = num_sites
+  T    = num_times
+  lamb = lambda
+  gamm = gamma
+  omeg = omega
+
+  Ntemp <- c(rep(rpois(n=U,lambda = lamb),times=T))
   Ni <- matrix(data=Ntemp, nrow = U, ncol = T)
+  for(i in 2:T) {
+    Ni[,i] <- rbinom(n = U, size = Ni[,i-1], prob = omeg) + rpois(n = U, lambda = gamm)
+  }
 
   nit <- Ni
   nit[] <- vapply(Ni, function(x) { rbinom(size = x, n = 1, prob = pdet) }, numeric(1))
 
-  return(list(Ni=Ni, nit=nit))
+  return(list(Nit=Ni, nit=nit))
 }
 
 
@@ -108,7 +148,7 @@ drpois <- function(x, lambda, red) {
   return(p)
 }
 
-#' Internal function. Used to calculate the negative of the likelihood.
+#' Internal function. Used to calculate the negative of the log likelihood.
 #' @param par Vector with two elements, logis(pdet) and log(lambda).
 #' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K   Upper bound on summations.
@@ -139,6 +179,56 @@ red_Like_closed <- function(par, nit, K, red, FUN=round) {
   }
   return(-1*l)
 }
+
+
+#' Internal function. Used to calculate the negative of the log likelihood.
+#' @param par Vector with four elements, logis(pdet), log(lambda), logis(omega), and log(gamma).
+#' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param K   Upper bound on summations.
+#' @param red reduction factor
+#' @export
+red_Like_open <- function(par, nit, K, red, FUN=round) {
+  T <- ncol(nit)
+  R <- nrow(nit)
+
+  pdet <- plogis(par[1])
+  lamb <- exp(par[2])
+  omeg <- plogis(par[3])
+  gamm <- exp(par[4])
+
+  Y <- FUN(nit/red)
+  K <- FUN(K/red)
+
+  l <- 0
+  # TODO:
+  # for(i in 1:R) {
+  #   li <- 0
+  #   ni <- max(Y[i,]) # ni
+  #
+  #   for(Ni in ni:K) {
+  #     lit <- 1
+  #     for(t in 1:T) {
+  #       lit <- lit*drbinom(x = Y[i,t]*red, size = Ni*red, prob = pdet, red=red)
+  #     }
+  #     li <- li + lit*drpois(x = Ni*red, lambda = lamb, red=red) + tp(Nit=Y, T=T, i=i)
+  #   }
+  #   l <- l+log(li)
+  # }
+  return(-1*l)
+}
+
+
+#' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
+tp_jk <- function(j,k,omeg,gamm,red) {
+  a <- data.frame(a=0:reduction(x = min(j,k), red = red))
+  prob <- sum(
+    apply(X = a, MARGIN = 1, FUN = function(c,j,k,omeg,gamm,red) {
+      drbinom(x = c, size = j, prob = omeg, red = red) * drpois(x = k-c, lambda = gamm, red = red)
+    }, j=j,k=k,omeg=omeg, gamm=gamm,red=red)
+  )
+  return(prob)
+}
+
 
 #' Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.
 #' @param starts Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).
