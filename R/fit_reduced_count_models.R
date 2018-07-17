@@ -1,0 +1,261 @@
+#' Generate a population/observation pair with the structure of a closed N-mixture model
+#'
+#' @param num_sites The number of observation sites.
+#' @param num_times The number of sampling occasions.
+#' @param lambda    The population rate parameter (\eqn{N_i \sim Poisson(\lambda)})
+#' @param pdet      The probability of detection \eqn{p} (\eqn{n_{it} \sim Binomial(N_i,p)})
+#' @return A list object with two named matrices. Ni contains the total population per site
+#'         (each row represents a site, each column a sampling occasion). nit contains the observed
+#'         counts (rows=sites, columns=sampling occasions).
+#' @examples
+#' pop <- gen_Nmix_closed(num_sites = 5, num_times = 10, lambda = 50, pdetection = 0.4)
+#' pop
+#' @export
+gen_Nmix_closed <- function(num_sites,num_times,lambda,pdet) {
+  U = num_sites
+  T = num_times
+  lamb = lambda
+
+  Ntemp <- c(rep(rpois(n=U,lambda = lamb),times=T))
+  Ni <- matrix(data=Ntemp, nrow = U, ncol = T)
+
+  nit <- Ni
+  nit[] <- vapply(Ni, function(x) { rbinom(size = x, n = 1, prob = pdet) }, numeric(1))
+
+  return(list(Ni=Ni, nit=nit))
+}
+
+
+#' Reduce an integer value using a reduction function \eqn{R(x;r)}.
+#'
+#' @param x The integer which is to be reduced.
+#' @param red The factor r by which to reduce the input x.
+#' @param FUN The reduction function (default is round(), some alternatives are ceiling() and floor())
+#' @return An integer value which is the reduction of integer x by reduction factor red using function FUN.
+#' @examples
+#' x <- 104
+#' xr1 <- reduction(x, 10)
+#' xr2 <- reduction(x, 10, ceiling)
+#' @export
+reduction <- function(x, red, FUN=round) {
+  FUN(x/red)
+}
+
+#' Internal function, should not be called directly. Used to calculate normalization constant for drbinom()
+drbinom_normalize <- function(x, size, prob, red, FUN=round) {
+  if(identical(FUN,round)) {
+    start <- reduction(x,red, FUN=FUN)*red-red/2
+    end   <- reduction(x,red, FUN=FUN)*red+red/2-1
+  } else {
+    stop("Error: FUN not yet implemented, try FUN=round")
+  }
+
+  p <- pbinom(end, size, prob) - pbinom(start, size, prob)
+  return(p)
+}
+
+#' Internal function, should not be called directly. Used to calculate normalization constant for drpois()
+drpois_normalize <- function(x, lambda, red, FUN=round) {
+  if(identical(FUN,round)) {
+    start <- reduction(x,red, FUN=FUN)*red-red/2
+    end   <- reduction(x,red, FUN=FUN)*red+red/2-1
+  } else {
+    stop("Error: FUN not yet implemented, try FUN=round")
+  }
+
+  p <- ppois(end, lambda) - ppois(start, lambda)
+  return(p)
+}
+
+#' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))}
+#'
+#' @param x Full count quantile (alternatively input r*x if x is a reduced count quantile).
+#' @param size Number of trials.
+#' @param prob Probability of success for each trial.
+#' @param red The factor r by which to reduce the input x.
+#' @return The probability of observing quantile \eqn{R(x;r)}
+#' @examples
+#' Y <- drbinom(0:200, 200, 0.3, 10)[seq(1,201,10)]
+#' plot(Y, xlab="Y=R(X;10), X~Binomial(N=200,p=0.3)", ylab="P[Y=y]")
+#' @export
+drbinom <- function(x, size, prob, red) {
+  p <- 0
+  if(red==1) {
+    p <- dbinom(x = x, size = size, prob = prob)
+  } else {
+    p <- drbinom_normalize(x, size, prob, red, FUN=round)
+  }
+  return(p)
+}
+
+#' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}
+#'
+#' @param x Full count quantile (alternatively input r*x if x is a reduced count quantile).
+#' @param lambda Mean of the full count poisson distribution.
+#' @param red The factor r by which to reduce the input x.
+#' @return The probability of observing quantile \eqn{R(x;r)}
+#' @examples
+#' Y <- drpois(seq(1,200,10), 55, 10)
+#' plot(Y, xlab="Y=R(X;10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
+#' @export
+drpois <- function(x, lambda, red) {
+  p <- 0
+  if(red==1) {
+    p <- dpois(x, lambda)
+  } else {
+    p <- drpois_normalize(x, lambda, red, FUN=round)
+  }
+  return(p)
+}
+
+#' Internal function. Used to calculate the negative of the likelihood.
+#' @param par Vector with two elements, logis(pdet) and log(lambda).
+#' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param K   Upper bound on summations.
+#' @param red reduction factor
+#' @export
+red_Like_closed <- function(par, nit, K, red, FUN=round) {
+  T <- ncol(nit)
+  R <- nrow(nit)
+
+  pdet <- plogis(par[1])
+  lamb <- exp(par[2])
+  Y <- FUN(nit/red)
+  K <- FUN(K/red)
+
+  l <- 0
+  for(i in 1:R) {
+    li <- 0
+    ni <- max(Y[i,]) # ni
+
+    for(Ni in ni:K) {
+      lit <- 1
+      for(t in 1:T) {
+        lit <- lit*drbinom(x = Y[i,t]*red, size = Ni*red, prob = pdet, red=red)
+      }
+      li <- li + lit*drpois(x = Ni*red, lambda = lamb, red=red) #lit*dpois(x = Ni, lambda = lamb/red) #
+    }
+    l <- l+log(li)
+  }
+  return(-1*l)
+}
+
+#' Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.
+#' @param starts Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).
+#' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param K      Upper bound on summations.
+#' @param red    reduction factor.
+#' @param ...    Additional input for optimr.
+#' @examples
+#' Y <- gen_Nmix_closed(1,5,250,0.5)
+#' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
+#' @export
+fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), ...) {
+  require(optimr)
+  opt <- optimr(par = starts,
+                fn  = red_Like_closed,
+                nit = nit,
+                K   = K,
+                red = red,
+                ...)
+  return(opt)
+}
+
+
+#' Plot likelihood given a pdet and range for lambda.
+#' @param nit         R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param startLambda Starting value for lambda.
+#' @param endLambda   Ending value for lambda.
+#' @param stepsize    Spacing between values of lambda
+#' @param pdet        Probability of detection (pdet = 0.5 means 50% chance of detection)
+#' @param red         Reduction factor.
+#' @param K           Upper bound on summations.
+#' @examples
+#' Y <- gen_Nmix_closed(5,5,250,0.5)
+#' plot_red_like_closed_lambda(Y=Y$nit, startLambda = 150, endLambda = 350, stepsize=10, pdet = 0.5, red = 10, K = 400)
+#' @export
+plot_red_like_closed_lambda <- function(nit, startLambda, endLambda, stepsize, pdet, red, K) {
+
+  parB <- startLambda
+  parT <- endLambda
+  j <- 1
+  L <- NULL
+  for(parM in seq(parB,parT,stepsize)) {
+    L[j] <- -1*red_Like_closed(nit = nit, par = c(boot::logit(pdet),log(parM)), K = K, red = red)
+    j <- j+1
+  }
+
+  plot(y=L, x=seq(parB,parT,stepsize), xlab="lambda")
+}
+
+#' Plot likelihood given a lambda and range for pdet.
+#' @param nit         R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param startPdet   Starting value for pdet.
+#' @param endPdet     Ending value for pdet.
+#' @param stepsize    Spacing between values of pdet
+#' @param lambda      Initial abundance parameter.
+#' @param K   Upper bound on summations.
+#' @param red reduction factor.
+#' @examples
+#' Y <- gen_Nmix_closed(5,5,250,0.5)
+#' plot_red_like_closed_pdet(Y=Y$nit, startPdet = 0.1, endPdet = 1.0, stepsize=0.1, lambda = 250, red = 10, K = 400)
+#' @export
+plot_red_like_closed_pdet <- function(nit, startPdet, endPdet, stepsize, lambda, red, K) {
+
+  parB <- startPdet
+  parT <- endPdet
+  j <- 1
+  L <- NULL
+  for(parM in seq(parB,parT,stepsize)) {
+    L[j] <- -1*red_Like_closed(nit = nit, par = c(boot::logit(parM),log(lambda)), K = K, red = red)
+    j <- j+1
+  }
+
+  plot(y=L, x=seq(parB,parT,stepsize), xlab="pdet")
+}
+
+#' Plot 2D likelihood given a range for pdet and for lambda.
+#' @param nit             R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param startPdet       Starting value for pdet.
+#' @param endPdet         Ending value for pdet.
+#' @param stepsizePdet    Spacing between values of pdet
+#' @param startLambda     Starting value for lambda.
+#' @param endLambda       Ending value for lambda.
+#' @param stepsizeLambda  Spacing between values of lambda
+#' @param K               Upper bound on summations.
+#' @param red             Reduction factor.
+#' @return                Returns a matrix of likelihoods where rows represent pdet, and columns represent lambda.
+#' @examples
+#' Y <- gen_Nmix_closed(5,5,250,0.5)
+#' plot_2d_red_like_closed(Y$nit, 0.1, 1.0, 0.25, 100, 400, 100, 10, 400)
+#' @export
+plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, startLambda, endLambda, stepsizeLambda, red, K) {
+  par1B <- startPdet
+  par1T <- endPdet
+  par2B <- startLambda
+  par2T <- endLambda
+  prange <- seq(par1B,par1T,stepsizePdet)
+  lrange <- seq(par2B,par2T,stepsizeLambda)
+  j <- 1
+  L <- matrix(nrow = length(prange), ncol = length(lrange))
+  for(par1M in prange) {
+    k <- 1
+    for(par2M in lrange) {
+      L[j,k] <- -1*red_Like_closed(nit = nit, par = c(boot::logit(par1M),log(par2M)), K = K, red = red)
+      k <- k+1
+    }
+    j <- j+1
+  }
+
+  L2 <- L
+  L[which(L==-Inf)] <- 2*min(L[which(L!=-Inf)])
+
+  par(mfrow=c(2,2), mar=c(1,1,1,1))
+  persp(prange, lrange, L, theta = 30, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
+  persp(prange, lrange, L, theta = 120, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
+  persp(prange, lrange, L, theta = 210, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
+  persp(prange, lrange, L, theta = 300, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
+
+  return(L2)
+}
+
