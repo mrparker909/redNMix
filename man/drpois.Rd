@@ -2,9 +2,9 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{drpois}
 \alias{drpois}
-\title{Reduced poisson probability distribution function rPoisson(x;lambda,r)}
+\title{Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}}
 \usage{
-drpois(x, lambda, red, K = 0)
+drpois(x, lambda, red)
 }
 \arguments{
 \item{x}{Full count quantile (alternatively input r*x if x is a reduced count quantile).}
@@ -12,15 +12,12 @@ drpois(x, lambda, red, K = 0)
 \item{lambda}{Mean of the full count poisson distribution.}
 
 \item{red}{The factor r by which to reduce the input x.}
-
-\item{K}{Upper bound after which to truncate Poisson (used in calculating alpha to normalize rPoisson).
-Default K=0 to have upper bound calculated automatically (not optimized).}
 }
 \value{
-The probability of observing quantile $R(x;r)$
+The probability of observing quantile \eqn{R(x;r)}
 }
 \description{
-Reduced poisson probability distribution function rPoisson(x;lambda,r)
+Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}
 }
 \examples{
 Y <- drpois(seq(1,200,10), 55, 10)

@@ -15,7 +15,7 @@ plot_red_like_closed_lambda(nit, startLambda, endLambda, stepsize, pdet, red, K)
 
 \item{stepsize}{Spacing between values of lambda}
 
-\item{pdet}{Probability of detection (pdet = 0.5 means 50% chance of detection)}
+\item{pdet}{Probability of detection (pdet = 0.5 means 50\% chance of detection)}
 
 \item{red}{Reduction factor.}
 

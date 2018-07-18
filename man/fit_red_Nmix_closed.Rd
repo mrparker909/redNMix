@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{fit_red_Nmix_closed}
 \alias{fit_red_Nmix_closed}
-\title{Find maximum likelihood estimates for model parameters pdet and lambda. Uses optimr.}
+\title{Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.}
 \usage{
 fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), ...)
 }
@@ -13,14 +13,14 @@ fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), ...)
 
 \item{K}{Upper bound on summations.}
 
-\item{starts}{Vector of starting values for optimize. Has two elements, logis(pdet) and lambda.}
+\item{starts}{Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).}
 
 \item{...}{Additional input for optimr.}
 }
 \description{
-Find maximum likelihood estimates for model parameters pdet and lambda. Uses optimr.
+Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.
 }
 \examples{
 Y <- gen_Nmix_closed(1,5,250,0.5)
-out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(0,log(250)))
+out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
 }

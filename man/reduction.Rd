@@ -2,9 +2,9 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{reduction}
 \alias{reduction}
-\title{Reduce an integer value using a reduction function $R(x;r)$.}
+\title{Reduce an integer value using a reduction function \eqn{R(x;r)}.}
 \usage{
-reduction(x, red, FUN = round)
+reduction(x, red, FUN = round2)
 }
 \arguments{
 \item{x}{The integer which is to be reduced.}
@@ -17,7 +17,7 @@ reduction(x, red, FUN = round)
 An integer value which is the reduction of integer x by reduction factor red using function FUN.
 }
 \description{
-Reduce an integer value using a reduction function $R(x;r)$.
+Reduce an integer value using a reduction function \eqn{R(x;r)}.
 }
 \examples{
 x <- 104

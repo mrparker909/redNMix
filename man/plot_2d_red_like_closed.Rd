@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{plot_2d_red_like_closed}
 \alias{plot_2d_red_like_closed}
-\title{Plot 2D likelihood a range for pdet and for lambda.}
+\title{Plot 2D likelihood given a range for pdet and for lambda.}
 \usage{
 plot_2d_red_like_closed(nit, startPdet, endPdet, stepsizePdet, startLambda,
   endLambda, stepsizeLambda, red, K)
@@ -22,7 +22,7 @@ plot_2d_red_like_closed(nit, startPdet, endPdet, stepsizePdet, startLambda,
 
 \item{stepsizeLambda}{Spacing between values of lambda}
 
-\item{red}{reduction factor.}
+\item{red}{Reduction factor.}
 
 \item{K}{Upper bound on summations.}
 }
@@ -30,7 +30,7 @@ plot_2d_red_like_closed(nit, startPdet, endPdet, stepsizePdet, startLambda,
 Returns a matrix of likelihoods where rows represent pdet, and columns represent lambda.
 }
 \description{
-Plot 2D likelihood a range for pdet and for lambda.
+Plot 2D likelihood given a range for pdet and for lambda.
 }
 \examples{
 Y <- gen_Nmix_closed(5,5,250,0.5)

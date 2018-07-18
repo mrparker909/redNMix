@@ -25,6 +25,15 @@ gen_Nmix_closed <- function(num_sites,num_times,lambda,pdet) {
   return(list(Ni=Ni, nit=nit))
 }
 
+# rounding in R rounds to nearest even number (eg 0.5 rounds to 0), this function does
+# "normal" rounding (eg 0.5 rounds to 1)
+round2 = function(x, n=0) {
+  sgn = sign(x)
+  z = abs(x)*10^n
+  z = trunc(z + 0.5)
+  z = z/10^n
+  z*sgn
+}
 
 #' Generate a population/observation pair with the structure of an open N-mixture model
 #'
@@ -77,34 +86,8 @@ gen_Nmix_open <- function(num_sites,num_times,lambda,pdet,omega,gamma) {
 #' xr1 <- reduction(x, 10)
 #' xr2 <- reduction(x, 10, ceiling)
 #' @export
-reduction <- function(x, red, FUN=round) {
+reduction <- function(x, red, FUN=round2) {
   FUN(x/red)
-}
-
-#' Internal function, should not be called directly. Used to calculate normalization constant for drbinom()
-drbinom_normalize <- function(x, size, prob, red, FUN=round) {
-  if(identical(FUN,round)) {
-    start <- reduction(x,red, FUN=FUN)*red-red/2
-    end   <- reduction(x,red, FUN=FUN)*red+red/2-1
-  } else {
-    stop("Error: FUN not yet implemented, try FUN=round")
-  }
-
-  p <- pbinom(end, size, prob) - pbinom(start, size, prob)
-  return(p)
-}
-
-#' Internal function, should not be called directly. Used to calculate normalization constant for drpois()
-drpois_normalize <- function(x, lambda, red, FUN=round) {
-  if(identical(FUN,round)) {
-    start <- reduction(x,red, FUN=FUN)*red-red/2
-    end   <- reduction(x,red, FUN=FUN)*red+red/2-1
-  } else {
-    stop("Error: FUN not yet implemented, try FUN=round")
-  }
-
-  p <- ppois(end, lambda) - ppois(start, lambda)
-  return(p)
 }
 
 #' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))}
@@ -119,12 +102,11 @@ drpois_normalize <- function(x, lambda, red, FUN=round) {
 #' plot(Y, xlab="Y=R(X;10), X~Binomial(N=200,p=0.3)", ylab="P[Y=y]")
 #' @export
 drbinom <- function(x, size, prob, red) {
-  p <- 0
-  if(red==1) {
-    p <- dbinom(x = x, size = size, prob = prob)
-  } else {
-    p <- drbinom_normalize(x, size, prob, red, FUN=round)
-  }
+  start <- reduction(x,red, FUN=round2)*red-red/2
+  end   <- reduction(x,red, FUN=round2)*red+red/2
+
+  p <- pbinom(end, size, prob) - pbinom(start, size, prob)
+
   return(p)
 }
 
@@ -139,12 +121,10 @@ drbinom <- function(x, size, prob, red) {
 #' plot(Y, xlab="Y=R(X;10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
 drpois <- function(x, lambda, red) {
-  p <- 0
-  if(red==1) {
-    p <- dpois(x, lambda)
-  } else {
-    p <- drpois_normalize(x, lambda, red, FUN=round)
-  }
+  start <- reduction(x,red, FUN=round2)*red-red/2
+  end   <- reduction(x,red, FUN=round2)*red+red/2
+
+  p <- ppois(end, lambda) - ppois(start, lambda)
   return(p)
 }
 
@@ -257,7 +237,7 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), ...) {
 #' @param startLambda Starting value for lambda.
 #' @param endLambda   Ending value for lambda.
 #' @param stepsize    Spacing between values of lambda
-#' @param pdet        Probability of detection (pdet = 0.5 means 50% chance of detection)
+#' @param pdet        Probability of detection (pdet = 0.5 means 50\% chance of detection)
 #' @param red         Reduction factor.
 #' @param K           Upper bound on summations.
 #' @examples

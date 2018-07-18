@@ -11,9 +11,9 @@ gen_Nmix_closed(num_sites, num_times, lambda, pdet)
 
 \item{num_times}{The number of sampling occasions.}
 
-\item{lambda}{The population rate parameter ($N_i \sim Poisson(\lambda)$)}
+\item{lambda}{The population rate parameter (\eqn{N_i \sim Poisson(\lambda)})}
 
-\item{pdet}{The probability of detection $p$ ($n_{it} \sim Binomial(N_i,p)$)}
+\item{pdet}{The probability of detection \eqn{p} (\eqn{n_{it} \sim Binomial(N_i,p)})}
 }
 \value{
 A list object with two named matrices. Ni contains the total population per site

@@ -16,12 +16,12 @@ drbinom(x, size, prob, red)
 \item{red}{The factor r by which to reduce the input x.}
 }
 \value{
-The probability of observing quantile $R(x;r)$
+The probability of observing quantile \eqn{R(x;r)}
 }
 \description{
 Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))}
 }
 \examples{
-Y <- drbinom(0:200, 200, 0.3, 10, FUN=round)[seq(1,201,10)]
+Y <- drbinom(0:200, 200, 0.3, 10)[seq(1,201,10)]
 plot(Y, xlab="Y=R(X;10), X~Binomial(N=200,p=0.3)", ylab="P[Y=y]")
 }
