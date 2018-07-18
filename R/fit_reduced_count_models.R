@@ -75,11 +75,11 @@ gen_Nmix_open <- function(num_sites,num_times,lambda,pdet,omega,gamma) {
 }
 
 
-#' Reduce an integer value using a reduction function \eqn{R(x;r)}.
+#' Reduce an integer value using a reduction function \eqn{R(x;r)}. Currently only implements round2(), which is standard rounding (\{x\}.5 rounds to \{x+1\}.0).
 #'
 #' @param x The integer which is to be reduced.
 #' @param red The factor r by which to reduce the input x.
-#' @param FUN The reduction function (default is round(), some alternatives are ceiling() and floor())
+#' @param FUN The reduction function (default is round2(), some alternatives are ceiling() and floor())
 #' @return An integer value which is the reduction of integer x by reduction factor red using function FUN.
 #' @examples
 #' x <- 104
