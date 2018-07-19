@@ -7,6 +7,7 @@
 #' @examples
 #' Y <- redNMix::gen_Nmix_closed(num_sites = 5,num_times = 5,lambda = 250,pdet = 0.5)
 #' max_r(nit = Y$nit)
+#' @export
 max_r <- function(nit, threshold=1.05) {
   r <- 1
   v1 <- var(as.numeric(nit))
