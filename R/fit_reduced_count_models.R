@@ -1,3 +1,23 @@
+#TODO: sim study to check if threshold is accurate representation of difference in variance of estimates,
+#' Recommend a reduction value \eqn{r} based on maximum threshold on increased variance.
+#' @param nit Full counts.
+#' @param threshold Desired maximum ratio of \eqn{v2/v1}, where \eqn{v2} is the variance of the full counts,
+#'                  and \eqn{v1} is the variance of the reduced counts, scaled by \eqn{r^2}.
+#' @return Recommended maximum reduction factor r to use when fitting reduced count model with given sample nit.
+#' @examples
+#' Y <- redNMix::gen_Nmix_closed(num_sites = 5,num_times = 5,lambda = 250,pdet = 0.5)
+#' max_r(nit = Y$nit)
+max_r <- function(nit, threshold=1.05) {
+  r <- 1
+  v1 <- var(as.numeric(nit))
+  v2 <- 0
+  while(v2 < threshold*v1) {
+    r  <- r+1
+    v2 <- r^2*var(as.numeric(reduction(nit,red=r)))
+  }
+  return(r)
+}
+
 #' Generate a population/observation pair with the structure of a closed N-mixture model
 #'
 #' @param num_sites The number of observation sites.

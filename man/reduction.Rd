@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{reduction}
 \alias{reduction}
-\title{Reduce an integer value using a reduction function \eqn{R(x;r)}.}
+\title{Reduce an integer value using a reduction function \eqn{R(x;r)}. Currently only implements round2(), which is standard rounding (\{x\}.5 rounds to \{x+1\}.0).}
 \usage{
 reduction(x, red, FUN = round2)
 }
@@ -11,13 +11,13 @@ reduction(x, red, FUN = round2)
 
 \item{red}{The factor r by which to reduce the input x.}
 
-\item{FUN}{The reduction function (default is round(), some alternatives are ceiling() and floor())}
+\item{FUN}{The reduction function (default is round2(), some alternatives are ceiling() and floor())}
 }
 \value{
 An integer value which is the reduction of integer x by reduction factor red using function FUN.
 }
 \description{
-Reduce an integer value using a reduction function \eqn{R(x;r)}.
+Reduce an integer value using a reduction function \eqn{R(x;r)}. Currently only implements round2(), which is standard rounding (\{x\}.5 rounds to \{x+1\}.0).
 }
 \examples{
 x <- 104
