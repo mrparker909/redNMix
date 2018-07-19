@@ -1,5 +1,7 @@
 #TODO: sim study to check if threshold is accurate representation of difference in variance of estimates,
+
 #' Recommend a reduction value \eqn{r} based on maximum threshold on increased variance.
+#'
 #' @param nit Full counts.
 #' @param threshold Desired maximum ratio of \eqn{v2/v1}, where \eqn{v2} is the variance of the full counts,
 #'                  and \eqn{v1} is the variance of the reduced counts, scaled by \eqn{r^2}.
