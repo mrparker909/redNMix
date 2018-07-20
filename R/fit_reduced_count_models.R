@@ -27,7 +27,7 @@ max_r <- function(nit, threshold=1.10) {
     r  <- r+1
     v2 <- r^2*var(as.numeric(reduction(nit,red=r)))
   }
-  return(r)
+  return(r-1)
 }
 
 #' Generate a population/observation pair with the structure of a closed N-mixture model
@@ -352,12 +352,32 @@ plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, start
   L2 <- L
   L[which(L==-Inf)] <- 2*min(L[which(L!=-Inf)])
 
-  par(mfrow=c(2,2), mar=c(1,1,1,1))
+  require(graphics)
+  cols  <- heat.colors(25)
+  
+  
+  layout(matrix(c(1,2,3,4,5,6), 3, 2, byrow = TRUE),
+         widths=c(1,1), heights=c(1,1,1))
+
+  par(mar = c(5,5,5,5))
+  image(x = prange, y=lrange, L,
+        ylab = "lambda", xlab = "pdet",
+        main = "Likelihood Contour")
+  box()
+  image(x = prange, y=lrange, exp(L),
+        ylab = "lambda", xlab = "pdet",
+        main = "Exponential Likelihood Contour")
+  box()
+  #par(mfrow=c(3,2), mar=c(1,1,1,1))
+  par(mar = c(1,1,1,1))
   persp(prange, lrange, L, theta = 30, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
   persp(prange, lrange, L, theta = 120, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
   persp(prange, lrange, L, theta = 210, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
   persp(prange, lrange, L, theta = 300, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
 
+  # filled.contour(prange, lrange, L, nlevels = 25, col = cols,
+  #                ylab = "lambda", xlab = "pdet", key.title = title("Likelihood"))
+  # 
   return(L2)
 }
 
