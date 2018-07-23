@@ -198,6 +198,8 @@ red_Like_closed <- function(par, nit, K, red, FUN=round) {
 #' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K   Upper bound on summations.
 #' @param red reduction factor
+#' @examples
+#'
 #' @export
 red_Like_open <- function(par, nit, K, red, FUN=round) {
   T <- ncol(nit)
@@ -211,21 +213,43 @@ red_Like_open <- function(par, nit, K, red, FUN=round) {
   Y <- FUN(nit/red)
   K <- FUN(K/red)
 
-  l <- 0
-  # TODO:
-  # for(i in 1:R) {
-  #   li <- 0
-  #   ni <- max(Y[i,]) # ni
-  #
-  #   for(Ni in ni:K) {
-  #     lit <- 1
-  #     for(t in 1:T) {
-  #       lit <- lit*drbinom(x = Y[i,t]*red, size = Ni*red, prob = pdet, red=red)
-  #     }
-  #     li <- li + lit*drpois(x = Ni*red, lambda = lamb, red=red) + tp(Nit=Y, T=T, i=i)
-  #   }
-  #   l <- l+log(li)
-  # }
+  # loop over sites
+  li <- 0
+  for(i in 1:R) {
+
+    # loop over time periods
+    lit <- 1
+    drp <- 0
+    for(t in 1:T) {
+      litk <- 0
+      # loop over possible value of Nit at site i, time t
+      if(t==1) { # t==1 has no transition probability component
+        for(k in Y[i,t]:K) {
+          drp[k] <- drpois(x = k*red, lambda = lamb, red = red) # this line not needed for t>1 (already setup here)
+
+          #dbinom(k) * pois(lambda) stuff
+          dens <- drbinom(x = Y[i,t], size = k, prob = pdet, red = K) * drp[k]
+
+          litk <- litk + dens
+        }
+      } else { # t > 1
+        for(k in 1:K) {
+          #dbinom(k) * tp(k-1, k) * pois(lambda) stuff
+          dens <- drbinom(x = Y[i,t], size = k, prob = pdet, red = K) *
+            drp[k] *
+            tp_jk(j = k-1, k = k, omeg = omeg, gamm = gamm, red = red)
+
+          litk <- litk + dens
+        }
+      }
+      lit <- lit * litk
+
+    }
+    li <- li + log(lit)
+    # result
+  }
+  l <- li
+
   return(-1*l)
 }
 
@@ -352,10 +376,7 @@ plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, start
   L2 <- L
   L[which(L==-Inf)] <- 2*min(L[which(L!=-Inf)])
 
-  require(graphics)
-  cols  <- heat.colors(25)
-  
-  
+  #require(graphics)
   layout(matrix(c(1,2,3,4,5,6), 3, 2, byrow = TRUE),
          widths=c(1,1), heights=c(1,1,1))
 
@@ -368,16 +389,13 @@ plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, start
         ylab = "lambda", xlab = "pdet",
         main = "Exponential Likelihood Contour")
   box()
-  #par(mfrow=c(3,2), mar=c(1,1,1,1))
+
   par(mar = c(1,1,1,1))
   persp(prange, lrange, L, theta = 30, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
   persp(prange, lrange, L, theta = 120, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
   persp(prange, lrange, L, theta = 210, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
   persp(prange, lrange, L, theta = 300, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
 
-  # filled.contour(prange, lrange, L, nlevels = 25, col = cols,
-  #                ylab = "lambda", xlab = "pdet", key.title = title("Likelihood"))
-  # 
   return(L2)
 }
 

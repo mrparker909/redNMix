@@ -4,7 +4,7 @@
 \alias{max_r}
 \title{Recommend a reduction value \eqn{r} based on maximum threshold on increased variance.}
 \usage{
-max_r(nit, threshold = 1.05)
+max_r(nit, threshold = 1.1)
 }
 \arguments{
 \item{nit}{Full counts.}
@@ -21,4 +21,13 @@ Recommend a reduction value \eqn{r} based on maximum threshold on increased vari
 \examples{
 Y <- redNMix::gen_Nmix_closed(num_sites = 5,num_times = 5,lambda = 250,pdet = 0.5)
 max_r(nit = Y$nit)
+
+Y <- redNMix::gen_Nmix_closed(num_sites = 5,num_times = 5,lambda = 2500,pdet = 0.15)
+z <- lapply(X = 1:200, FUN = redNMix::reduction, x=Y$nit)
+z2 <- lapply(X = z, FUN = function(x){var(as.numeric(x))})
+plot(sqrt(unlist(z2))*1:200,
+     xlab="reduction factor r",
+     ylab="standard deviation of scaled reduced counts")
+abline(h = sqrt(1.1*var(as.numeric(unlist(z[[1]])))))
+title("sd(nit_r) for r 1:200")
 }
