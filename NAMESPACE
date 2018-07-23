@@ -3,6 +3,7 @@
 export(drbinom)
 export(drpois)
 export(fit_red_Nmix_closed)
+export(fit_red_Nmix_open)
 export(gen_Nmix_closed)
 export(gen_Nmix_open)
 export(max_r)

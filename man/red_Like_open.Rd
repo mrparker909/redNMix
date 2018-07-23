@@ -18,6 +18,3 @@ red_Like_open(par, nit, K, red, FUN = round)
 \description{
 Internal function. Used to calculate the negative of the log likelihood.
 }
-\examples{
-
-}
