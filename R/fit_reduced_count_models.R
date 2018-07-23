@@ -198,8 +198,6 @@ red_Like_closed <- function(par, nit, K, red, FUN=round) {
 #' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K   Upper bound on summations.
 #' @param red reduction factor
-#' @examples
-#'
 #' @export
 red_Like_open <- function(par, nit, K, red, FUN=round) {
   T <- ncol(nit)
@@ -225,7 +223,7 @@ red_Like_open <- function(par, nit, K, red, FUN=round) {
       # loop over possible value of Nit at site i, time t
       if(t==1) { # t==1 has no transition probability component
         for(k in Y[i,t]:K) {
-          drp[k] <- drpois(x = k*red, lambda = lamb, red = red) # this line not needed for t>1 (already setup here)
+          drp[k] <- drpois(x = k*red, lambda = lamb, red = red) # this line not needed for t>1 (stores pois(lambda) for Nit=k, t=1, to use when t!=1)
 
           #dbinom(k) * pois(lambda) stuff
           dens <- drbinom(x = Y[i,t], size = k, prob = pdet, red = K) * drp[k]
@@ -233,7 +231,8 @@ red_Like_open <- function(par, nit, K, red, FUN=round) {
           litk <- litk + dens
         }
       } else { # t > 1
-        for(k in 1:K) {
+        for(k in Y[i,t]:K) {
+
           #dbinom(k) * tp(k-1, k) * pois(lambda) stuff
           dens <- drbinom(x = Y[i,t], size = k, prob = pdet, red = K) *
             drp[k] *
@@ -287,6 +286,27 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), ...) {
   return(opt)
 }
 
+
+#' Find maximum likelihood estimates for model parameters logit(pdet), log(lambda), logit(omega), and log(gamma). Uses optimr.
+#' @param starts Vector with four elements, logit(pdet), log(lambda), logit(omega), and log(gamma).
+#' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param K      Upper bound on summations.
+#' @param red    reduction factor.
+#' @param ...    Additional input for optimr.
+#' @examples
+#' Y <- gen_Nmix_closed(1,5,250,0.5)
+#' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
+#' @export
+fit_red_Nmix_open <- function(nit, red, K, starts=c(0,1,0,1), ...) {
+  require(optimr)
+  opt <- optimr(par = starts,
+                fn  = red_Like_open,
+                nit = nit,
+                K   = K,
+                red = red,
+                ...)
+  return(opt)
+}
 
 #' Plot likelihood given a pdet and range for lambda.
 #' @param nit         R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
