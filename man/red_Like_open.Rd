@@ -9,13 +9,13 @@ red_Like_open(par, nit, K, red, FUN = round, VERBOSE = FALSE)
 \arguments{
 \item{par}{Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).}
 
-\item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
+\item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
 
-\item{K}{Upper bound on summations.}
+\item{K}{Upper bound on summations (reduced counts upper bound).}
 
-\item{red}{reduction factor}
+\item{red}{Reduction factor}
 
-\item{VERBOSE}{if true, prints the log likelihood to console.}
+\item{VERBOSE}{If true, prints the log likelihood to console.}
 }
 \description{
 Internal function. Used to calculate the negative of the log likelihood.

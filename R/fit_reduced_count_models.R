@@ -137,7 +137,7 @@ reduction <- function(x, red, FUN=round2) {
 #' plot(Y, xlab="Y~rBinom(N=20,p=0.3,r=10)", ylab="P[Y=y]")
 #' @export
 drbinom <- function(x, size, prob, red, log=FALSE) {
-  start <- x*red-red/2
+  start <- x*red - red/2
   end   <- start + red
 
   p <- pbinom(end, size*red, prob) - pbinom(start, size*red, prob)
@@ -257,11 +257,11 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
 
 
 #' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
-#' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
-#' @param K   Upper bound on summations.
-#' @param red reduction factor
-#' @param VERBOSE if true, prints the log likelihood to console.
+#' @param par     Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
+#' @param nit     R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param K       Upper bound on summations (reduced counts upper bound).
+#' @param red     Reduction factor
+#' @param VERBOSE If true, prints the log likelihood to console.
 #' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
 #' @export
 red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
@@ -273,9 +273,7 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
   omeg <- plogis(par[3])
   gamm <- exp(par[2])
 
-  Y <- FUN(nit/red)
-  K <- FUN(K/red)
-
+  Y <- nit
 
   # holds g1[k] * g_star[k]
   g1_t_star <- rep(0, times=K+1)
@@ -295,7 +293,7 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
       g1_t <- rep(0, times=K+1)
       # loop over possible value of N at time t
       for(k in 1:K+1) {
-        g1_t[k] <- drbinom(x = Y[i,t]*red, size = (k-1)*red, prob = pdet, red = red) #Rf_dbinom(y(i,j,t), k, p(i,j,t), true);
+        g1_t[k] <- drbinom(x = Y[i,t], size = (k-1), prob = pdet, red = red) #Rf_dbinom(y(i,j,t), k, p(i,j,t), true);
         g1_t_star[k] <- g1_t[k] * g_star[k];
       }
 
@@ -309,8 +307,8 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
 
     # loop over possible values of N at time t==1
     for(k in 1:K+1) {
-      g1[k] <- drbinom(x = Y[i,1]*red, size = (k-1)*red, prob = pdet, red = red)
-      g2[k] <- drpois(x = (k-1)*red, lambda = lamb, red = red)
+      g1[k] <- drbinom(x = Y[i,1], size = (k-1), prob = pdet, red = red)
+      g2[k] <- drpois(x = (k-1), lambda = lamb, red = red)
 
       # apply recursive definition of likelihood
       ll_i <- ll_i + g1[k] * g2[k] * g_star[k];
@@ -326,13 +324,19 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
 
 #' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
 tp_jk <- function(j,k,omeg,gamm,red) {
-  a <- data.frame(matrix(seq(0,min(j,k),1),ncol = 1))
-  prob <- sum(
-    apply(X = a, MARGIN = 1, FUN = function(c,j,k,omeg,gamm,red) {
-      drbinom(x = c, size = j, prob = omeg, red = red) * drpois(x = k-c, lambda = gamm, red = red)
-    }, j=j,k=k,omeg=omeg, gamm=gamm,red=red)
-  )
-  return(prob)
+  a <- 1
+  p <- 0
+  for(c in 0:min(j,k)) {
+    p <- p + drbinom(x = c, size = j, prob = omeg, red = red) *
+             drpois(x = k-c, lambda = gamm, red = red)
+  }
+  # a <- data.frame(matrix(seq(0,min(j,k),1),ncol = 1))
+  # prob <- sum(
+  #   apply(X = a, MARGIN = 1, FUN = function(c,j,k,omeg,gamm,red) {
+  #     drbinom(x = c, size = j, prob = omeg, red = red) * drpois(x = k-c, lambda = gamm, red = red)
+  #   }, j=j,k=k,omeg=omeg, gamm=gamm,red=red)
+  # )
+  return(p)
 }
 
 #' Internal function, calculates transition probability matrix (transition from row pop to column pop)
@@ -361,10 +365,10 @@ tp_MAT <- function(M, omeg, gamm, red) {
 #' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
 #' @export
 fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), VERBOSE=FALSE, ...) {
-  opt <- optim(par     = starts,
+  opt <- optim(par      = starts,
                 fn      = red_Like_closed,
                 nit     = reduction(x = nit, red = red),
-                K       = reduction(x = K, red = red),
+                K       = reduction(x = K,   red = red),
                 red     = red,
                 VERBOSE = VERBOSE,
                 ...)
@@ -386,11 +390,11 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), VERBOSE=FALSE, ...) 
 fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...) {
   opt <- optim(par      = starts,
                 fn      = red_Like_open,
-                nit     = nit,
-                K       = K,
+                nit     = reduction(x = nit, red = red),
+                K       = reduction(x = K,   red = red),
                 red     = red,
                 VERBOSE = VERBOSE,
-                method = "BFGS",
+                method  = "BFGS",
                 ...)
   return(opt)
 }
