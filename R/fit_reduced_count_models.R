@@ -133,12 +133,15 @@ reduction <- function(x, red, FUN=round2) {
 #' Y <- drbinom(0:200, 200, 0.3, 10)[seq(1,201,10)]
 #' plot(Y, xlab="Y=R(X;10), X~Binomial(N=200,p=0.3)", ylab="P[Y=y]")
 #' @export
-drbinom <- function(x, size, prob, red) {
+drbinom <- function(x, size, prob, red, log=FALSE) {
   start <- reduction(x,red, FUN=round2)*red-red/2
-  end   <- reduction(x,red, FUN=round2)*red+red/2
+  end   <- start + red# reduction(x,red, FUN=round2)*red+red/2
 
   p <- pbinom(end, size, prob) - pbinom(start, size, prob)
 
+  if(log) {
+    return(log(p))
+  }
   return(p)
 }
 
@@ -152,11 +155,14 @@ drbinom <- function(x, size, prob, red) {
 #' Y <- drpois(seq(1,200,10), 55, 10)
 #' plot(Y, xlab="Y=R(X;10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
-drpois <- function(x, lambda, red) {
+drpois <- function(x, lambda, red, log=FALSE) {
   start <- reduction(x,red, FUN=round2)*red-red/2
-  end   <- reduction(x,red, FUN=round2)*red+red/2
+  end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
 
   p <- ppois(end, lambda) - ppois(start, lambda)
+  if(log) {
+    return(log(p))
+  }
   return(p)
 }
 
@@ -165,8 +171,9 @@ drpois <- function(x, lambda, red) {
 #' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K   Upper bound on summations.
 #' @param red reduction factor
+#' @param VERBOSE If true, prints the calculated log likelihood to console.
 #' @export
-red_Like_closed <- function(par, nit, K, red, FUN=round) {
+red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
@@ -189,73 +196,82 @@ red_Like_closed <- function(par, nit, K, red, FUN=round) {
     }
     l <- l+log(li)
   }
+  if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
 }
 
 
 #' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par Vector with four elements, logis(pdet), log(lambda), logis(omega), and log(gamma).
+#' @param par Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
 #' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K   Upper bound on summations.
 #' @param red reduction factor
+#' @param VERBOSE if true, prints the log likelihood to console.
+#' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
 #' @export
-red_Like_open <- function(par, nit, K, red, FUN=round) {
+red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
-  pdet <- plogis(par[1])
-  lamb <- exp(par[2])
+  pdet <- plogis(par[4])
+  lamb <- exp(par[1])
   omeg <- plogis(par[3])
-  gamm <- exp(par[4])
+  gamm <- exp(par[2])
 
   Y <- FUN(nit/red)
   K <- FUN(K/red)
 
+
+  # holds g1[k] * g_star[k]
+  g1_t_star <- rep(0, times=K+1)
+
+  # g3 is the transition probability matrix
+  g3_ <- matrix(0, nrow = K+1, ncol=K+1)
+  g3  <- tp_MAT(M = g3_, omeg = omeg, gamm = gamm, red = red)
+
+  ll <- 0
   # loop over sites
-  li <- 0
   for(i in 1:R) {
 
-    # loop over time periods
-    lit <- 1
-    drp <- 0
-    for(t in 1:T) {
-      litk <- 0
-      # loop over possible value of Nit at site i, time t
-      if(t==1) { # t==1 has no transition probability component
-        for(k in Y[i,t]:K) {
-          drp[k] <- drpois(x = k*red, lambda = lamb, red = red) # this line not needed for t>1 (stores pois(lambda) for Nit=k, t=1, to use when t!=1)
+    g_star <- rep(1, times=K+1)
+    # loop backwards over times t, stopping at t==2
+    for(t in T:2) {
 
-          #dbinom(k) * pois(lambda) stuff
-          dens <- drbinom(x = Y[i,t], size = k, prob = pdet, red = K) * drp[k]
-
-          litk <- litk + dens
-        }
-      } else { # t > 1
-        for(k in Y[i,t]:K) {
-
-          #dbinom(k) * tp(k-1, k) * pois(lambda) stuff
-          dens <- drbinom(x = Y[i,t], size = k, prob = pdet, red = K) *
-            drp[k] *
-            tp_jk(j = k-1, k = k, omeg = omeg, gamm = gamm, red = red)
-
-          litk <- litk + dens
-        }
+      g1_t <- rep(0, times=K+1)
+      # loop over possible value of N at time t
+      for(k in 1:K+1) {
+        g1_t[k] <- drbinom(x = Y[i,t]*red, size = (k-1)*red, prob = pdet, red = red) #Rf_dbinom(y(i,j,t), k, p(i,j,t), true);
+        g1_t_star[k] <- g1_t[k] * g_star[k];
       }
-      lit <- lit * litk
 
+      # update g_star
+      g_star = g3 %*% g1_t_star
     }
-    li <- li + log(lit)
-    # result
-  }
-  l <- li
 
-  return(-1*l)
+    ll_i <- 0.0
+    g1 <- rep(0, times = K+1)
+    g2 <- rep(0, times = K+1)
+
+    # loop over possible values of N at time t==1
+    for(k in 1:K+1) {
+      g1[k] <- drbinom(x = Y[i,1]*red, size = (k-1)*red, prob = pdet, red = red)
+      g2[k] <- drpois(x = (k-1)*red, lambda = lamb, red = red)
+
+      # apply recursive definition of likelihood
+      ll_i <- ll_i + g1[k] * g2[k] * g_star[k];
+    }
+
+    ll   <- ll + log(ll_i + 1e-320)
+  }
+
+  if(VERBOSE) {print(paste0("log likelihood: ",ll))}
+  return(-1*ll)
 }
 
 
 #' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
 tp_jk <- function(j,k,omeg,gamm,red) {
-  a <- data.frame(a=0:reduction(x = min(j,k), red = red))
+  a <- data.frame(matrix(seq(0,min(j,k),1),ncol = 1))
   prob <- sum(
     apply(X = a, MARGIN = 1, FUN = function(c,j,k,omeg,gamm,red) {
       drbinom(x = c, size = j, prob = omeg, red = red) * drpois(x = k-c, lambda = gamm, red = red)
@@ -264,46 +280,64 @@ tp_jk <- function(j,k,omeg,gamm,red) {
   return(prob)
 }
 
+#' Internal function, calculates transition probability matrix (transition from row pop to column pop)
+tp_MAT <- function(M, omeg, gamm, red) {
+  K1 <- nrow(M)
+
+  for(row in 1:K1) {
+    for(col in 1:K1) {
+      M[row,col] <- tp_jk(row-1, col-1, omeg=omeg, gamm=gamm, red=red)
+    }
+  }
+
+  return(M)
+}
+
 
 #' Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.
 #' @param starts Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K      Upper bound on summations.
 #' @param red    reduction factor.
+#' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optimr.
 #' @examples
 #' Y <- gen_Nmix_closed(1,5,250,0.5)
 #' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
 #' @export
-fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), ...) {
+fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), VERBOSE=FALSE, ...) {
   require(optimr)
-  opt <- optimr(par = starts,
-                fn  = red_Like_closed,
-                nit = nit,
-                K   = K,
-                red = red,
+  opt <- optimr(par     = starts,
+                fn      = red_Like_closed,
+                nit     = nit,
+                K       = K,
+                red     = red,
+                VERBOSE = VERBOSE,
                 ...)
   return(opt)
 }
 
 
-#' Find maximum likelihood estimates for model parameters logit(pdet), log(lambda), logit(omega), and log(gamma). Uses optimr.
-#' @param starts Vector with four elements, logit(pdet), log(lambda), logit(omega), and log(gamma).
+#' Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optimr.
+#' @param starts Vector with four elements, log(lambda), log(gamma), logit(omega), and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K      Upper bound on summations.
 #' @param red    reduction factor.
+#' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optimr.
 #' @examples
-#' Y <- gen_Nmix_closed(1,5,250,0.5)
-#' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
+#' Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
+#' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
 #' @export
-fit_red_Nmix_open <- function(nit, red, K, starts=c(0,1,0,1), ...) {
-  require(optimr)
-  opt <- optimr(par = starts,
-                fn  = red_Like_open,
-                nit = nit,
-                K   = K,
-                red = red,
+fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...) {
+  #require(optimr)
+  opt <- optim(par      = starts,
+                fn      = red_Like_open,
+                nit     = nit,
+                K       = K,
+                red     = red,
+                VERBOSE = VERBOSE,
+                method = "BFGS",
                 ...)
   return(opt)
 }

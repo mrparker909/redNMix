@@ -4,7 +4,7 @@
 \alias{fit_red_Nmix_closed}
 \title{Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.}
 \usage{
-fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), ...)
+fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), VERBOSE = FALSE, ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -14,6 +14,8 @@ fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), ...)
 \item{K}{Upper bound on summations.}
 
 \item{starts}{Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).}
+
+\item{VERBOSE}{If true, prints the log likelihood to console at each optim iteration.}
 
 \item{...}{Additional input for optimr.}
 }

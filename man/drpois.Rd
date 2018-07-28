@@ -4,7 +4,7 @@
 \alias{drpois}
 \title{Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}}
 \usage{
-drpois(x, lambda, red)
+drpois(x, lambda, red, log = FALSE)
 }
 \arguments{
 \item{x}{Full count quantile (alternatively input r*x if x is a reduced count quantile).}

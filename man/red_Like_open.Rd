@@ -4,7 +4,7 @@
 \alias{red_Like_open}
 \title{Internal function. Used to calculate the negative of the log likelihood.}
 \usage{
-red_Like_open(par, nit, K, red, FUN = round)
+red_Like_open(par, nit, K, red, FUN = round, VERBOSE = FALSE)
 }
 \arguments{
 \item{par}{Vector with four elements, logis(pdet), log(lambda), logis(omega), and log(gamma).}
@@ -14,7 +14,12 @@ red_Like_open(par, nit, K, red, FUN = round)
 \item{K}{Upper bound on summations.}
 
 \item{red}{reduction factor}
+
+\item{VERBOSE}{if true, prints the log likelihood to console.}
 }
 \description{
 Internal function. Used to calculate the negative of the log likelihood.
+}
+\details{
+Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
 }

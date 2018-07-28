@@ -4,7 +4,7 @@
 \alias{drbinom}
 \title{Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))}}
 \usage{
-drbinom(x, size, prob, red)
+drbinom(x, size, prob, red, log = FALSE)
 }
 \arguments{
 \item{x}{Full count quantile (alternatively input r*x if x is a reduced count quantile).}

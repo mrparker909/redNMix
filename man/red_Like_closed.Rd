@@ -4,7 +4,7 @@
 \alias{red_Like_closed}
 \title{Internal function. Used to calculate the negative of the log likelihood.}
 \usage{
-red_Like_closed(par, nit, K, red, FUN = round)
+red_Like_closed(par, nit, K, red, FUN = round, VERBOSE = FALSE)
 }
 \arguments{
 \item{par}{Vector with two elements, logis(pdet) and log(lambda).}
@@ -14,6 +14,8 @@ red_Like_closed(par, nit, K, red, FUN = round)
 \item{K}{Upper bound on summations.}
 
 \item{red}{reduction factor}
+
+\item{VERBOSE}{If true, prints the calculated log likelihood to console.}
 }
 \description{
 Internal function. Used to calculate the negative of the log likelihood.
