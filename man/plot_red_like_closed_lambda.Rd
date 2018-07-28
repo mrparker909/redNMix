@@ -7,7 +7,7 @@
 plot_red_like_closed_lambda(nit, startLambda, endLambda, stepsize, pdet, red, K)
 }
 \arguments{
-\item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
+\item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
 
 \item{startLambda}{Starting value for lambda.}
 
@@ -19,12 +19,12 @@ plot_red_like_closed_lambda(nit, startLambda, endLambda, stepsize, pdet, red, K)
 
 \item{red}{Reduction factor.}
 
-\item{K}{Upper bound on summations.}
+\item{K}{Upper bound on summations (reduced counts upper bound).}
 }
 \description{
 Plot likelihood given a pdet and range for lambda.
 }
 \examples{
 Y <- gen_Nmix_closed(5,5,250,0.5)
-plot_red_like_closed_lambda(Y=Y$nit, startLambda = 150, endLambda = 350, stepsize=10, pdet = 0.5, red = 10, K = 400)
+plot_red_like_closed_lambda(Y=reduction(Y$nit,10), startLambda = 150, endLambda = 350, stepsize=10, pdet = 0.5, red = 10, K = reduction(400,10))
 }

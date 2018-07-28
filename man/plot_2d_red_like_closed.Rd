@@ -8,7 +8,7 @@ plot_2d_red_like_closed(nit, startPdet, endPdet, stepsizePdet, startLambda,
   endLambda, stepsizeLambda, red, K)
 }
 \arguments{
-\item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
+\item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
 
 \item{startPdet}{Starting value for pdet.}
 
@@ -24,7 +24,7 @@ plot_2d_red_like_closed(nit, startPdet, endPdet, stepsizePdet, startLambda,
 
 \item{red}{Reduction factor.}
 
-\item{K}{Upper bound on summations.}
+\item{K}{Upper bound on summations (reduced counts upper bound).}
 }
 \value{
 Returns a matrix of likelihoods where rows represent pdet, and columns represent lambda.
@@ -34,5 +34,5 @@ Plot 2D likelihood given a range for pdet and for lambda.
 }
 \examples{
 Y <- gen_Nmix_closed(5,5,250,0.5)
-plot_2d_red_like_closed(Y$nit, 0.1, 1.0, 0.25, 100, 400, 100, 10, 400)
+plot_2d_red_like_closed(reduction(Y$nit,10), 0.1, 1.0, 0.25, 100, 400, 100, 10, reduction(400,10))
 }

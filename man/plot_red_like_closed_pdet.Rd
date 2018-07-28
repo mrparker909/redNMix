@@ -7,7 +7,7 @@
 plot_red_like_closed_pdet(nit, startPdet, endPdet, stepsize, lambda, red, K)
 }
 \arguments{
-\item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
+\item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
 
 \item{startPdet}{Starting value for pdet.}
 
@@ -19,12 +19,12 @@ plot_red_like_closed_pdet(nit, startPdet, endPdet, stepsize, lambda, red, K)
 
 \item{red}{reduction factor.}
 
-\item{K}{Upper bound on summations.}
+\item{K}{Upper bound on summations (reduced counts upper bound).}
 }
 \description{
 Plot likelihood given a lambda and range for pdet.
 }
 \examples{
 Y <- gen_Nmix_closed(5,5,250,0.5)
-plot_red_like_closed_pdet(Y=Y$nit, startPdet = 0.1, endPdet = 1.0, stepsize=0.1, lambda = 250, red = 10, K = 400)
+plot_red_like_closed_pdet(Y=reduction(Y$nit,10), startPdet = 0.1, endPdet = 1.0, stepsize=0.1, lambda = 250, red = 10, K = reduction(400,10))
 }

@@ -224,8 +224,8 @@ drpois2 <- function(x, lambda, red, log=FALSE) {
 
 #' Internal function. Used to calculate the negative of the log likelihood.
 #' @param par Vector with two elements, logis(pdet) and log(lambda).
-#' @param nit R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
-#' @param K   Upper bound on summations.
+#' @param nit R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
 #' @export
@@ -235,8 +235,7 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
 
   pdet <- plogis(par[1])
   lamb <- exp(par[2])
-  Y <- FUN(nit/red)
-  K <- FUN(K/red)
+  Y <- nit
 
   l <- 0
   for(i in 1:R) {
@@ -246,9 +245,9 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
     for(Ni in ni:K) {
       lit <- 1
       for(t in 1:T) {
-        lit <- lit*drbinom(x = Y[i,t]*red, size = Ni*red, prob = pdet, red=red)
+        lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
       }
-      li <- li + lit*drpois(x = Ni*red, lambda = lamb, red=red) #lit*dpois(x = Ni, lambda = lamb/red) #
+      li <- li + lit*drpois(x = Ni, lambda = lamb, red=red) #lit*dpois(x = Ni, lambda = lamb/red) #
     }
     l <- l+log(li)
   }
@@ -353,7 +352,7 @@ tp_MAT <- function(M, omeg, gamm, red) {
 #' Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optim.
 #' @param starts Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
-#' @param K      Upper bound on summations.
+#' @param K      Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).
 #' @param red    reduction factor.
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optim.
@@ -364,8 +363,8 @@ tp_MAT <- function(M, omeg, gamm, red) {
 fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), VERBOSE=FALSE, ...) {
   opt <- optim(par     = starts,
                 fn      = red_Like_closed,
-                nit     = nit,
-                K       = K,
+                nit     = reduction(x = nit, red = red),
+                K       = reduction(x = K, red = red),
                 red     = red,
                 VERBOSE = VERBOSE,
                 ...)
@@ -397,16 +396,16 @@ fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...
 }
 
 #' Plot likelihood given a pdet and range for lambda.
-#' @param nit         R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param nit         R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param startLambda Starting value for lambda.
 #' @param endLambda   Ending value for lambda.
 #' @param stepsize    Spacing between values of lambda
 #' @param pdet        Probability of detection (pdet = 0.5 means 50\% chance of detection)
 #' @param red         Reduction factor.
-#' @param K           Upper bound on summations.
+#' @param K           Upper bound on summations (reduced counts upper bound).
 #' @examples
 #' Y <- gen_Nmix_closed(5,5,250,0.5)
-#' plot_red_like_closed_lambda(Y=Y$nit, startLambda = 150, endLambda = 350, stepsize=10, pdet = 0.5, red = 10, K = 400)
+#' plot_red_like_closed_lambda(Y=reduction(Y$nit,10), startLambda = 150, endLambda = 350, stepsize=10, pdet = 0.5, red = 10, K = reduction(400,10))
 #' @export
 plot_red_like_closed_lambda <- function(nit, startLambda, endLambda, stepsize, pdet, red, K) {
 
@@ -423,16 +422,16 @@ plot_red_like_closed_lambda <- function(nit, startLambda, endLambda, stepsize, p
 }
 
 #' Plot likelihood given a lambda and range for pdet.
-#' @param nit         R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param nit         R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param startPdet   Starting value for pdet.
 #' @param endPdet     Ending value for pdet.
 #' @param stepsize    Spacing between values of pdet
 #' @param lambda      Initial abundance parameter.
-#' @param K   Upper bound on summations.
+#' @param K   Upper bound on summations (reduced counts upper bound).
 #' @param red reduction factor.
 #' @examples
 #' Y <- gen_Nmix_closed(5,5,250,0.5)
-#' plot_red_like_closed_pdet(Y=Y$nit, startPdet = 0.1, endPdet = 1.0, stepsize=0.1, lambda = 250, red = 10, K = 400)
+#' plot_red_like_closed_pdet(Y=reduction(Y$nit,10), startPdet = 0.1, endPdet = 1.0, stepsize=0.1, lambda = 250, red = 10, K = reduction(400,10))
 #' @export
 plot_red_like_closed_pdet <- function(nit, startPdet, endPdet, stepsize, lambda, red, K) {
 
@@ -449,19 +448,19 @@ plot_red_like_closed_pdet <- function(nit, startPdet, endPdet, stepsize, lambda,
 }
 
 #' Plot 2D likelihood given a range for pdet and for lambda.
-#' @param nit             R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param nit             R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param startPdet       Starting value for pdet.
 #' @param endPdet         Ending value for pdet.
 #' @param stepsizePdet    Spacing between values of pdet
 #' @param startLambda     Starting value for lambda.
 #' @param endLambda       Ending value for lambda.
 #' @param stepsizeLambda  Spacing between values of lambda
-#' @param K               Upper bound on summations.
+#' @param K               Upper bound on summations (reduced counts upper bound).
 #' @param red             Reduction factor.
 #' @return                Returns a matrix of likelihoods where rows represent pdet, and columns represent lambda.
 #' @examples
 #' Y <- gen_Nmix_closed(5,5,250,0.5)
-#' plot_2d_red_like_closed(Y$nit, 0.1, 1.0, 0.25, 100, 400, 100, 10, 400)
+#' plot_2d_red_like_closed(reduction(Y$nit,10), 0.1, 1.0, 0.25, 100, 400, 100, 10, reduction(400,10))
 #' @export
 plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, startLambda, endLambda, stepsizeLambda, red, K) {
   par1B <- startPdet
@@ -491,11 +490,11 @@ plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, start
   par(mar = c(5,5,5,5))
   image(x = prange, y=lrange, L,
         ylab = "lambda", xlab = "pdet",
-        main = "Likelihood Contour")
+        main = "Log Likelihood Contour")
   box()
   image(x = prange, y=lrange, exp(L),
         ylab = "lambda", xlab = "pdet",
-        main = "Exponential Likelihood Contour")
+        main = "Likelihood Contour")
   box()
 
   par(mar = c(1,1,1,1))

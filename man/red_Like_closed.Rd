@@ -9,9 +9,9 @@ red_Like_closed(par, nit, K, red, FUN = round, VERBOSE = FALSE)
 \arguments{
 \item{par}{Vector with two elements, logis(pdet) and log(lambda).}
 
-\item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
+\item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
 
-\item{K}{Upper bound on summations.}
+\item{K}{Upper bound on summations (input reduced count upper bound).}
 
 \item{red}{reduction factor}
 

@@ -11,7 +11,7 @@ fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), VERBOSE = FALSE, ...)
 
 \item{red}{reduction factor.}
 
-\item{K}{Upper bound on summations.}
+\item{K}{Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).}
 
 \item{starts}{Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).}
 
