@@ -7,7 +7,7 @@
 red_Like_open(par, nit, K, red, FUN = round, VERBOSE = FALSE)
 }
 \arguments{
-\item{par}{Vector with four elements, logis(pdet), log(lambda), logis(omega), and log(gamma).}
+\item{par}{Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).}
 
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
 

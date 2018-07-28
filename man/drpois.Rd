@@ -2,24 +2,29 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{drpois}
 \alias{drpois}
-\title{Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}}
+\title{Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).}
 \usage{
 drpois(x, lambda, red, log = FALSE)
 }
 \arguments{
-\item{x}{Full count quantile (alternatively input r*x if x is a reduced count quantile).}
+\item{x}{Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).}
 
 \item{lambda}{Mean of the full count poisson distribution.}
 
-\item{red}{The factor r by which to reduce the input x.}
+\item{red}{The factor r by which x was reduced.}
 }
 \value{
-The probability of observing quantile \eqn{R(x;r)}
+The probability of observing quantile \eqn{x}
 }
 \description{
-Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}
+Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
 }
 \examples{
-Y <- drpois(seq(1,200,10), 55, 10)
-plot(Y, xlab="Y=R(X;10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
+# probability of observing 105 from pois(lam=90)
+x <- dpois(x = 105, lambda = 90)
+# probability of observing reduction(105, 10) from rpois(lam=90, r=10) is larger since multiple values of x map to the same value of y
+y <- drpois(x = reduction(105, 10), lambda = 90, red = 10)
+
+Y <- drpois(seq(1,20,1), 55, 10)
+plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 }

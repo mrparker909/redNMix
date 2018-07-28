@@ -2,9 +2,9 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{fit_red_Nmix_open}
 \alias{fit_red_Nmix_open}
-\title{Find maximum likelihood estimates for model parameters logit(pdet), log(lambda), logit(omega), and log(gamma). Uses optimr.}
+\title{Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.}
 \usage{
-fit_red_Nmix_open(nit, red, K, starts = c(0, 1, 0, 1), VERBOSE = FALSE, ...)
+fit_red_Nmix_open(nit, red, K, starts = c(1, 1, 0, 0), VERBOSE = FALSE, ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -13,14 +13,14 @@ fit_red_Nmix_open(nit, red, K, starts = c(0, 1, 0, 1), VERBOSE = FALSE, ...)
 
 \item{K}{Upper bound on summations.}
 
-\item{starts}{Vector with four elements, logit(pdet), log(lambda), logit(omega), and log(gamma).}
+\item{starts}{Vector with four elements, log(lambda), log(gamma), logit(omega), and logit(pdet).}
 
 \item{VERBOSE}{If true, prints the log likelihood to console at each optim iteration.}
 
-\item{...}{Additional input for optimr.}
+\item{...}{Additional input for optim.}
 }
 \description{
-Find maximum likelihood estimates for model parameters logit(pdet), log(lambda), logit(omega), and log(gamma). Uses optimr.
+Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.
 }
 \examples{
 Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)

@@ -107,7 +107,8 @@ gen_Nmix_open <- function(num_sites,num_times,lambda,pdet,omega,gamma) {
 }
 
 
-#' Reduce an integer value using a reduction function \eqn{R(x;r)}. Currently only implements round2(), which is standard rounding (\{x\}.5 rounds to \{x+1\}.0).
+#' Reduce an integer value using a reduction function \eqn{R(x;r)}.
+#' Currently only implements round2(), which is standard rounding (\{x\}.5 rounds to \{x+1\}.0).
 #'
 #' @param x The integer which is to be reduced.
 #' @param red The factor r by which to reduce the input x.
@@ -122,7 +123,34 @@ reduction <- function(x, red, FUN=round2) {
   FUN(x/red)
 }
 
-#' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))}
+
+#' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
+#' takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
+#'
+#' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
+#' @param size Number of trials.
+#' @param prob Probability of success for each trial.
+#' @param red The factor r by which x has been reduced.
+#' @return The probability of observing quantile \eqn{x}.
+#' @examples
+#' Y <- drbinom(0:20, 20, 0.3, 10)
+#' plot(Y, xlab="Y~rBinom(N=20,p=0.3,r=10)", ylab="P[Y=y]")
+#' @export
+drbinom <- function(x, size, prob, red, log=FALSE) {
+  start <- x*red-red/2
+  end   <- start + red
+
+  p <- pbinom(end, size*red, prob) - pbinom(start, size*red, prob)
+
+  if(log) {
+    return(log(p))
+  }
+  return(p)
+}
+
+
+#' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
+#' takes full quantiles rather than reduced quantiles (use drbinom for reduced quantiles).
 #'
 #' @param x Full count quantile (alternatively input r*x if x is a reduced count quantile).
 #' @param size Number of trials.
@@ -130,12 +158,12 @@ reduction <- function(x, red, FUN=round2) {
 #' @param red The factor r by which to reduce the input x.
 #' @return The probability of observing quantile \eqn{R(x;r)}
 #' @examples
-#' Y <- drbinom(0:200, 200, 0.3, 10)[seq(1,201,10)]
+#' Y <- drbinom2(0:200, 200, 0.3, 10)[seq(1,201,10)]
 #' plot(Y, xlab="Y=R(X;10), X~Binomial(N=200,p=0.3)", ylab="P[Y=y]")
 #' @export
-drbinom <- function(x, size, prob, red, log=FALSE) {
-  start <- reduction(x,red, FUN=round2)*red-red/2
-  end   <- start + red# reduction(x,red, FUN=round2)*red+red/2
+drbinom2 <- function(x, size, prob, red, log=FALSE) {
+  start  <- reduction(x,red, FUN=round2)*red-red/2
+  end    <- start + red# reduction(x,red, FUN=round2)*red+red/2
 
   p <- pbinom(end, size, prob) - pbinom(start, size, prob)
 
@@ -145,17 +173,45 @@ drbinom <- function(x, size, prob, red, log=FALSE) {
   return(p)
 }
 
-#' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}
+
+#' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
+#'
+#' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
+#' @param lambda Mean of the full count poisson distribution.
+#' @param red The factor r by which x was reduced.
+#' @return The probability of observing quantile \eqn{x}
+#' @examples
+#' # probability of observing 105 from pois(lam=90)
+#' x <- dpois(x = 105, lambda = 90)
+#' # probability of observing reduction(105, 10) from rpois(lam=90, r=10) is larger since multiple values of x map to the same value of y
+#' y <- drpois(x = reduction(105, 10), lambda = 90, red = 10)
+#'
+#' Y <- drpois(seq(1,20,1), 55, 10)
+#' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
+#' @export
+drpois  <- function(x, lambda, red, log=FALSE) {
+  start <- x*red-red/2
+  end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
+
+  p <- ppois(end, lambda) - ppois(start, lambda)
+  if(log) {
+    return(log(p))
+  }
+  return(p)
+}
+
+
+#' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes full quantiles (use drpois for reduced quantiles).
 #'
 #' @param x Full count quantile (alternatively input r*x if x is a reduced count quantile).
 #' @param lambda Mean of the full count poisson distribution.
 #' @param red The factor r by which to reduce the input x.
 #' @return The probability of observing quantile \eqn{R(x;r)}
 #' @examples
-#' Y <- drpois(seq(1,200,10), 55, 10)
+#' Y <- drpois2(seq(1,200,10), 55, 10)
 #' plot(Y, xlab="Y=R(X;10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
-drpois <- function(x, lambda, red, log=FALSE) {
+drpois2 <- function(x, lambda, red, log=FALSE) {
   start <- reduction(x,red, FUN=round2)*red-red/2
   end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
 
@@ -294,20 +350,19 @@ tp_MAT <- function(M, omeg, gamm, red) {
 }
 
 
-#' Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.
+#' Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optim.
 #' @param starts Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K      Upper bound on summations.
 #' @param red    reduction factor.
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
-#' @param ...    Additional input for optimr.
+#' @param ...    Additional input for optim.
 #' @examples
 #' Y <- gen_Nmix_closed(1,5,250,0.5)
 #' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
 #' @export
 fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), VERBOSE=FALSE, ...) {
-  require(optimr)
-  opt <- optimr(par     = starts,
+  opt <- optim(par     = starts,
                 fn      = red_Like_closed,
                 nit     = nit,
                 K       = K,
@@ -318,19 +373,18 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), VERBOSE=FALSE, ...) 
 }
 
 
-#' Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optimr.
+#' Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.
 #' @param starts Vector with four elements, log(lambda), log(gamma), logit(omega), and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K      Upper bound on summations.
 #' @param red    reduction factor.
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
-#' @param ...    Additional input for optimr.
+#' @param ...    Additional input for optim.
 #' @examples
 #' Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
 #' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
 #' @export
 fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...) {
-  #require(optimr)
   opt <- optim(par      = starts,
                 fn      = red_Like_open,
                 nit     = nit,

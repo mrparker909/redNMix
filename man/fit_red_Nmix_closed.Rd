@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{fit_red_Nmix_closed}
 \alias{fit_red_Nmix_closed}
-\title{Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.}
+\title{Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optim.}
 \usage{
 fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), VERBOSE = FALSE, ...)
 }
@@ -17,10 +17,10 @@ fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), VERBOSE = FALSE, ...)
 
 \item{VERBOSE}{If true, prints the log likelihood to console at each optim iteration.}
 
-\item{...}{Additional input for optimr.}
+\item{...}{Additional input for optim.}
 }
 \description{
-Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optimr.
+Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optim.
 }
 \examples{
 Y <- gen_Nmix_closed(1,5,250,0.5)

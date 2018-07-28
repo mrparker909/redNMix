@@ -2,26 +2,28 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{drbinom}
 \alias{drbinom}
-\title{Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))}}
+\title{Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
+takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).}
 \usage{
 drbinom(x, size, prob, red, log = FALSE)
 }
 \arguments{
-\item{x}{Full count quantile (alternatively input r*x if x is a reduced count quantile).}
+\item{x}{Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).}
 
 \item{size}{Number of trials.}
 
 \item{prob}{Probability of success for each trial.}
 
-\item{red}{The factor r by which to reduce the input x.}
+\item{red}{The factor r by which x has been reduced.}
 }
 \value{
-The probability of observing quantile \eqn{R(x;r)}
+The probability of observing quantile \eqn{x}.
 }
 \description{
-Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))}
+Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
+takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
 }
 \examples{
-Y <- drbinom(0:200, 200, 0.3, 10)[seq(1,201,10)]
-plot(Y, xlab="Y=R(X;10), X~Binomial(N=200,p=0.3)", ylab="P[Y=y]")
+Y <- drbinom(0:20, 20, 0.3, 10)
+plot(Y, xlab="Y~rBinom(N=20,p=0.3,r=10)", ylab="P[Y=y]")
 }
