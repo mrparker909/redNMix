@@ -290,31 +290,40 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
     # loop backwards over times t, stopping at t==2
     for(t in T:2) {
 
-      g1_t <- rep(0, times=K+1)
-      # loop over possible value of N at time t
-      for(k in 1:K+1) {
-        g1_t[k] <- drbinom(x = Y[i,t], size = (k-1), prob = pdet, red = red) #Rf_dbinom(y(i,j,t), k, p(i,j,t), true);
-        g1_t_star[k] <- g1_t[k] * g_star[k];
-      }
+      #g1_t <- rep(0, times=K+1)
+      g1_t <- numeric(K+1)
+
+      # loop over possible value of N (0 to K) at time t
+      g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
+      g1_t_star <- g1_t * g_star
 
       # update g_star
       g_star = g3 %*% g1_t_star
     }
 
-    ll_i <- 0.0
-    g1 <- rep(0, times = K+1)
-    g2 <- rep(0, times = K+1)
+    #ll_i <- 0.0
+    #g1 <- rep(0, times = K+1)
+    #g2 <- rep(0, times = K+1)
+    g1 <- numeric(K+1)
+    g2 <- numeric(K+1)
+
 
     # loop over possible values of N at time t==1
-    for(k in 1:K+1) {
-      g1[k] <- drbinom(x = Y[i,1], size = (k-1), prob = pdet, red = red)
-      g2[k] <- drpois(x = (k-1), lambda = lamb, red = red)
+    # for(k in 1:K+1) {
+    #   g1[k] <- drbinom(x = Y[i,1], size = (k-1), prob = pdet, red = red)
+    #   g2[k] <- drpois(x = (k-1), lambda = lamb, red = red)
+    #
+    #   # apply recursive definition of likelihood
+    #   ll_i <- ll_i + g1[k] * g2[k] * g_star[k]
+    # }
+    g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
+    g2 <- drpois(x = 0:K, lambda = lamb, red = red)
 
-      # apply recursive definition of likelihood
-      ll_i <- ll_i + g1[k] * g2[k] * g_star[k];
-    }
+    # apply recursive definition of likelihood
+    ll_i <- g1 * g2 * g_star
 
-    ll   <- ll + log(ll_i + 1e-320)
+    ll   <- ll + log(sum(ll_i) + 1e-320)
+    #ll <- sum(log(ll_i+1e-320))
   }
 
   if(VERBOSE) {print(paste0("log likelihood: ",ll))}
@@ -324,30 +333,21 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
 
 #' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
 tp_jk <- function(j,k,omeg,gamm,red) {
-  a <- 1
-  p <- 0
-  for(c in 0:min(j,k)) {
-    p <- p + drbinom(x = c, size = j, prob = omeg, red = red) *
-             drpois(x = k-c, lambda = gamm, red = red)
-  }
-  # a <- data.frame(matrix(seq(0,min(j,k),1),ncol = 1))
-  # prob <- sum(
-  #   apply(X = a, MARGIN = 1, FUN = function(c,j,k,omeg,gamm,red) {
-  #     drbinom(x = c, size = j, prob = omeg, red = red) * drpois(x = k-c, lambda = gamm, red = red)
-  #   }, j=j,k=k,omeg=omeg, gamm=gamm,red=red)
-  # )
+  p  <- 0
+  rb <- drbinom(x = 0:min(j,k), size = j, prob = omeg, red = red)
+  rp <- drpois(x = k-0:min(j,k), lambda = gamm, red = red)
+
+  p <- sum(rb * rp)
+
   return(p)
 }
 
+tp_jk_Vec <- Vectorize(tp_jk)
+
 #' Internal function, calculates transition probability matrix (transition from row pop to column pop)
 tp_MAT <- function(M, omeg, gamm, red) {
-  K1 <- nrow(M)
-
-  for(row in 1:K1) {
-    for(col in 1:K1) {
-      M[row,col] <- tp_jk(row-1, col-1, omeg=omeg, gamm=gamm, red=red)
-    }
-  }
+  K1 <- 1:(nrow(M))
+  M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_Vec, omeg, gamm, red)
 
   return(M)
 }
