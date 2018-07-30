@@ -237,27 +237,25 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
   lamb <- exp(par[1])
   Y <- nit
 
-  # TODO: optimize this so it is more efficient!
   l <- 0
   for(i in 1:R) {
-    li <- 0
-    ni <- max(Y[i,])
+    ni  <- max(Y[i,])
+    niK <- ni:K
+    li  <- numeric(length(niK))
 
-    for(Ni in ni:K) {
-      lit2 <- lapply(X = 1:T, FUN = function(t, ...) {
-        drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-      }, Y=Y, i=i, Ni=Ni, pdet=pdet, red=red)
+    dr  <- drpois(x = niK, lambda = lamb, red=red)
+    li2 <- lapply(X = niK, FUN = function(Ni, ...)
+      {
+         lit2 <- numeric(T)
+         lit2 <- lapply(X = 1:T, FUN = function(t, ...)
+              {
+                drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+              }, Ni, ...)
+         lit  <- prod(unlist(lit2))
+      }, Y=Y, i=i, pdet=pdet, red=red)
 
-      lit <- prod(unlist(lit2))
-
-      li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
-      # lit <- 1
-      # for(t in 1:T) {
-      #   lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-      # }
-      # li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
-    }
-    l <- l+log(li+1e-320)
+    li  <- sum(unlist(li2)*dr)
+    l   <- l+log(li+1e-320)
   }
   if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
