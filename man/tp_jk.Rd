@@ -2,10 +2,12 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{tp_jk}
 \alias{tp_jk}
-\title{Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.}
+\title{Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
+Not Vectorized.}
 \usage{
 tp_jk(j, k, omeg, gamm, red)
 }
 \description{
 Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
+Not Vectorized.
 }

@@ -2,9 +2,9 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{fit_red_Nmix_closed}
 \alias{fit_red_Nmix_closed}
-\title{Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optim.}
+\title{Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.}
 \usage{
-fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), VERBOSE = FALSE, ...)
+fit_red_Nmix_closed(nit, red, K, starts = c(1, 0), VERBOSE = FALSE, ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -13,16 +13,16 @@ fit_red_Nmix_closed(nit, red, K, starts = c(0, 1), VERBOSE = FALSE, ...)
 
 \item{K}{Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).}
 
-\item{starts}{Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).}
+\item{starts}{Vector of starting values for optimize. Has two elements, log(lambda) and logit(pdet).}
 
 \item{VERBOSE}{If true, prints the log likelihood to console at each optim iteration.}
 
 \item{...}{Additional input for optim.}
 }
 \description{
-Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optim.
+Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
 }
 \examples{
 Y <- gen_Nmix_closed(1,5,250,0.5)
-out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
+out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)))
 }

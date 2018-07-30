@@ -223,7 +223,7 @@ drpois2 <- function(x, lambda, red, log=FALSE) {
 }
 
 #' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par Vector with two elements, logis(pdet) and log(lambda).
+#' @param par Vector with two elements, log(lambda) and logis(pdet).
 #' @param nit R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor
@@ -233,21 +233,22 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
-  pdet <- plogis(par[1])
-  lamb <- exp(par[2])
+  pdet <- plogis(par[2])
+  lamb <- exp(par[1])
   Y <- nit
 
+  # TODO: optimize this so it is more efficient!
   l <- 0
   for(i in 1:R) {
     li <- 0
-    ni <- max(Y[i,]) # ni
+    ni <- max(Y[i,])
 
     for(Ni in ni:K) {
       lit <- 1
       for(t in 1:T) {
         lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
       }
-      li <- li + lit*drpois(x = Ni, lambda = lamb, red=red) #lit*dpois(x = Ni, lambda = lamb/red) #
+      li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
     }
     l <- l+log(li)
   }
@@ -275,63 +276,82 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
 
   Y <- nit
 
-  # holds g1[k] * g_star[k]
+  # g1_t_star[k] holds g1[k] * g_star[k]
+  # allocate memory for vectors
   g1_t_star <- rep(0, times=K+1)
+  g1_t      <- numeric(K+1)
+  g1        <- numeric(K+1)
+  g2        <- numeric(K+1)
+  g_star    <- rep(1, times=K+1)
 
   # g3 is the transition probability matrix
-  g3_ <- matrix(0, nrow = K+1, ncol=K+1)
-  g3  <- tp_MAT(M = g3_, omeg = omeg, gamm = gamm, red = red)
+  # allocate memory for matrix
+  g3 <- matrix(0, nrow = K+1, ncol=K+1)
+  g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red)
 
-  ll <- 0
-  # loop over sites
-  for(i in 1:R) {
+  # apply over sites (1 to R)
+  ll_i  <- lapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
+      # loop backwards over times t, stopping at t==2
+      for(t in T:2) {
+        # size takes possible value of N (0 to K) at time t (for t > 1)
+        g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
+        g1_t_star <- g1_t * g_star
 
-    g_star <- rep(1, times=K+1)
-    # loop backwards over times t, stopping at t==2
-    for(t in T:2) {
+        # update g_star
+        g_star = g3 %*% g1_t_star
+      }
 
-      #g1_t <- rep(0, times=K+1)
-      g1_t <- numeric(K+1)
+      # size takes possible values of N (0 to K) at time t==1
+      g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
+      g2 <- drpois(x = 0:K, lambda = lamb, red = red)
 
-      # loop over possible value of N (0 to K) at time t
-      g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
-      g1_t_star <- g1_t * g_star
+      # apply recursive definition of likelihood, add small constant to prevent log(0) issues
+      return( log(sum(g1 * g2 * g_star) + 1e-320) )
+  }, K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
 
-      # update g_star
-      g_star = g3 %*% g1_t_star
-    }
+  ll <- sum(unlist(ll_i))
+  ###
 
-    #ll_i <- 0.0
-    #g1 <- rep(0, times = K+1)
-    #g2 <- rep(0, times = K+1)
-    g1 <- numeric(K+1)
-    g2 <- numeric(K+1)
+  # ll <- 0
+  # # loop over sites
+  # for(i in 1:R) {
+  #
+  #   g_star <- rep(1, times=K+1)
+  #   # loop backwards over times t, stopping at t==2
+  #   for(t in T:2) {
+  #
+  #     # allocate memory for vector
+  #     g1_t <- numeric(K+1)
+  #
+  #     # loop over possible value of N (0 to K) at time t
+  #     g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
+  #     g1_t_star <- g1_t * g_star
+  #
+  #     # update g_star
+  #     g_star = g3 %*% g1_t_star
+  #   }
+  #
+  #   # allocate memory for vectors
+  #   g1 <- numeric(K+1)
+  #   g2 <- numeric(K+1)
+  #
+  #   # loop over possible values of N (0 to K) at time t==1
+  #   g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
+  #   g2 <- drpois(x = 0:K, lambda = lamb, red = red)
+  #
+  #   # apply recursive definition of likelihood
+  #   ll_i <- g1 * g2 * g_star
+  #
+  #   ll   <- ll + log(sum(ll_i) + 1e-200)
+  # }
 
-
-    # loop over possible values of N at time t==1
-    # for(k in 1:K+1) {
-    #   g1[k] <- drbinom(x = Y[i,1], size = (k-1), prob = pdet, red = red)
-    #   g2[k] <- drpois(x = (k-1), lambda = lamb, red = red)
-    #
-    #   # apply recursive definition of likelihood
-    #   ll_i <- ll_i + g1[k] * g2[k] * g_star[k]
-    # }
-    g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
-    g2 <- drpois(x = 0:K, lambda = lamb, red = red)
-
-    # apply recursive definition of likelihood
-    ll_i <- g1 * g2 * g_star
-
-    ll   <- ll + log(sum(ll_i) + 1e-320)
-    #ll <- sum(log(ll_i+1e-320))
-  }
-
-  if(VERBOSE) {print(paste0("log likelihood: ",ll))}
+  if(VERBOSE) { print(paste0("log likelihood: ",ll)) }
   return(-1*ll)
 }
 
 
 #' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
+#' Not Vectorized.
 tp_jk <- function(j,k,omeg,gamm,red) {
   p  <- 0
   rb <- drbinom(x = 0:min(j,k), size = j, prob = omeg, red = red)
@@ -342,19 +362,33 @@ tp_jk <- function(j,k,omeg,gamm,red) {
   return(p)
 }
 
+# can this be run as a parallel process using multiple cores?
+tp_jk_V <- function(j_vec,k_vec,omeg,gamm,red) {
+
+  p <- mapply(FUN = function(j,k,omeg,gamm,red) {
+    rb <- drbinom(x = 0:min(j,k), size = j, prob = omeg, red = red)
+    rp <- drpois(x = k-0:min(j,k), lambda = gamm, red = red)
+
+    return(sum(rb * rp))
+  }, j=j_vec, k=k_vec, omeg=omeg, gamm=gamm,red=red)
+
+
+  return(p)
+}
+
 tp_jk_Vec <- Vectorize(tp_jk)
 
 #' Internal function, calculates transition probability matrix (transition from row pop to column pop)
 tp_MAT <- function(M, omeg, gamm, red) {
   K1 <- 1:(nrow(M))
-  M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_Vec, omeg, gamm, red)
+  M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V, omeg, gamm, red)
 
   return(M)
 }
 
 
-#' Find maximum likelihood estimates for model parameters logit(pdet) and log(lambda). Uses optim.
-#' @param starts Vector of starting values for optimize. Has two elements, logit(pdet) and log(lambda).
+#' Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
+#' @param starts Vector of starting values for optimize. Has two elements, log(lambda) and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K      Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).
 #' @param red    reduction factor.
@@ -362,15 +396,16 @@ tp_MAT <- function(M, omeg, gamm, red) {
 #' @param ...    Additional input for optim.
 #' @examples
 #' Y <- gen_Nmix_closed(1,5,250,0.5)
-#' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(boot::logit(0.5),log(250)))
+#' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)))
 #' @export
-fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), VERBOSE=FALSE, ...) {
+fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, ...) {
   opt <- optim(par      = starts,
                 fn      = red_Like_closed,
                 nit     = reduction(x = nit, red = red),
                 K       = reduction(x = K,   red = red),
                 red     = red,
                 VERBOSE = VERBOSE,
+                method  = "BFGS",
                 ...)
   return(opt)
 }
@@ -388,6 +423,7 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(0,1), VERBOSE=FALSE, ...) 
 #' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
 #' @export
 fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...) {
+
   opt <- optim(par      = starts,
                 fn      = red_Like_open,
                 nit     = reduction(x = nit, red = red),
@@ -396,6 +432,7 @@ fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...
                 VERBOSE = VERBOSE,
                 method  = "BFGS",
                 ...)
+
   return(opt)
 }
 
