@@ -244,13 +244,20 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
     ni <- max(Y[i,])
 
     for(Ni in ni:K) {
-      lit <- 1
-      for(t in 1:T) {
-        lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-      }
+      lit2 <- lapply(X = 1:T, FUN = function(t, ...) {
+        drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+      }, Y=Y, i=i, Ni=Ni, pdet=pdet, red=red)
+
+      lit <- prod(unlist(lit2))
+
       li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
+      # lit <- 1
+      # for(t in 1:T) {
+      #   lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+      # }
+      # li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
     }
-    l <- l+log(li)
+    l <- l+log(li+1e-320)
   }
   if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
@@ -455,7 +462,7 @@ plot_red_like_closed_lambda <- function(nit, startLambda, endLambda, stepsize, p
   j <- 1
   L <- NULL
   for(parM in seq(parB,parT,stepsize)) {
-    L[j] <- -1*red_Like_closed(nit = nit, par = c(boot::logit(pdet),log(parM)), K = K, red = red)
+    L[j] <- -1*red_Like_closed(nit = nit, par = c(log(parM), boot::logit(pdet)), K = K, red = red)
     j <- j+1
   }
 
@@ -481,7 +488,7 @@ plot_red_like_closed_pdet <- function(nit, startPdet, endPdet, stepsize, lambda,
   j <- 1
   L <- NULL
   for(parM in seq(parB,parT,stepsize)) {
-    L[j] <- -1*red_Like_closed(nit = nit, par = c(boot::logit(parM),log(lambda)), K = K, red = red)
+    L[j] <- -1*red_Like_closed(nit = nit, par = c(log(lambda), boot::logit(parM)), K = K, red = red)
     j <- j+1
   }
 
@@ -515,7 +522,7 @@ plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, start
   for(par1M in prange) {
     k <- 1
     for(par2M in lrange) {
-      L[j,k] <- -1*red_Like_closed(nit = nit, par = c(boot::logit(par1M),log(par2M)), K = K, red = red)
+      L[j,k] <- -1*red_Like_closed(nit = nit, par = c(log(par2M),boot::logit(par1M)), K = K, red = red)
       k <- k+1
     }
     j <- j+1
@@ -539,10 +546,10 @@ plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, start
   box()
 
   par(mar = c(1,1,1,1))
-  persp(prange, lrange, L, theta = 30, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
-  persp(prange, lrange, L, theta = 120, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
-  persp(prange, lrange, L, theta = 210, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
-  persp(prange, lrange, L, theta = 300, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Likelihood")
+  persp(prange, lrange, L, theta = 30, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Log Likelihood")
+  persp(prange, lrange, L, theta = 120, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Log Likelihood")
+  persp(prange, lrange, L, theta = 210, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Log Likelihood")
+  persp(prange, lrange, L, theta = 300, phi = 30, col = "lightblue", shade = 0.25, ticktype = "detailed", xlab = "pdet", ylab="lambda", zlab = "Log Likelihood")
 
   return(L2)
 }
