@@ -21,6 +21,7 @@
 #' @export
 max_r <- function(nit, threshold=1.10) {
   r <- 1
+
   v1 <- var(as.numeric(nit))
   v2 <- 0
   while(v2 < threshold*v1) {
@@ -141,7 +142,7 @@ drbinom <- function(x, size, prob, red, log=FALSE) {
   end   <- start + red
 
   p <- pbinom(end, size*red, prob) - pbinom(start, size*red, prob)
-
+  #if(p < 0) { print(paste("drbinom < 0!", "x=",x,"size=",size, "prob=",prob, "red=",red))}
   if(log) {
     return(log(p))
   }
@@ -190,10 +191,17 @@ drbinom2 <- function(x, size, prob, red, log=FALSE) {
 #' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
 drpois  <- function(x, lambda, red, log=FALSE) {
-  start <- x*red-red/2
-  end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
+  p <- mapply(FUN = function(x, lambda, red) {
+                             start <- round2(x*red-red/2)
+                             end   <- start + red - 1 # reduction(x,red, FUN=round2)*red+red/2
 
-  p <- ppois(end, lambda) - ppois(start, lambda)
+                             sum(dpois(seq(start,end,1), lambda))
+                      },
+       x = x,
+       lambda = lambda,
+       red = red)
+  #p <- ppois(end-1, lambda) - ppois(start-1, lambda)
+  #p[which(p < 0)] <- 0
   if(log) {
     return(log(p))
   }
@@ -237,29 +245,89 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
   lamb <- exp(par[1])
   Y <- nit
 
+  # TODO: optimize this so it is more efficient!
   l <- 0
   for(i in 1:R) {
-    ni  <- max(Y[i,])
-    niK <- ni:K
-    li  <- numeric(length(niK))
+    li <- 0
+    ni <- max(Y[i,])
 
-    dr  <- drpois(x = niK, lambda = lamb, red=red)
-    li2 <- lapply(X = niK, FUN = function(Ni, ...)
-      {
-         lit2 <- numeric(T)
-         lit2 <- lapply(X = 1:T, FUN = function(t, ...)
-              {
-                drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-              }, Ni, ...)
-         lit  <- prod(unlist(lit2))
-      }, Y=Y, i=i, pdet=pdet, red=red)
-
-    li  <- sum(unlist(li2)*dr)
-    l   <- l+log(li+1e-320)
+    for(Ni in ni:K) {
+      lit <- 1
+      for(t in 1:T) {
+        lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+      }
+      li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
+    }
+    l <- l+log(li)
   }
   if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
 }
+# red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
+#   T <- ncol(nit)
+#   R <- nrow(nit)
+#
+#   pdet <- plogis(par[2])
+#   lamb <- exp(par[1])
+#   Y <- nit
+#
+#   # TODO: optimize this so it is more efficient!
+#   l <- 0
+#   for(i in 1:R) {
+#     li <- 0
+#     ni <- max(Y[i,])
+#
+#     for(Ni in ni:K) {
+#       lit2 <- lapply(X = 1:T, FUN = function(t, ...) {
+#         drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+#       }, Y=Y, i=i, Ni=Ni, pdet=pdet, red=red)
+#
+#       lit <- prod(unlist(lit2))
+#
+#       li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
+#       # lit <- 1
+#       # for(t in 1:T) {
+#       #   lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+#       # }
+#       # li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
+#     }
+#     l <- l+log(li+1e-320)
+#   }
+#   if(VERBOSE) {print(paste0("log likelihood: ",l))}
+#   return(-1*l)
+# }
+# red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
+#   T <- ncol(nit)
+#   R <- nrow(nit)
+#
+#   pdet <- plogis(par[2])
+#   lamb <- exp(par[1])
+#   Y <- nit
+#
+#   l <- 0
+#   for(i in 1:R) {
+#     ni  <- max(Y[i,])
+#     niK <- ni:K
+#     li  <- numeric(length(niK))
+#
+#     dr  <- drpois(x = niK, lambda = lamb, red=red)
+#     li2 <- lapply(X = niK, FUN = function(Ni, ...)
+#       {
+#          lit2 <- numeric(T)
+#          lit2 <- lapply(X = 1:T, FUN = function(t, ...)
+#               {
+#                 drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+#               }, Ni, ...)
+#          lit  <- prod(unlist(lit2))
+#       }, Y=Y, i=i, pdet=pdet, red=red)
+#
+#     li  <- sum(unlist(li2)*dr)
+#     if(li <= 0) { li <- 1e-200 }
+#     l   <- l+log(li+1e-200)
+#   }
+#   if(VERBOSE) {print(paste0("log likelihood: ",l))}
+#   return(-1*l)
+# }
 
 
 #' Internal function. Used to calculate the negative of the log likelihood.
@@ -395,7 +463,7 @@ tp_MAT <- function(M, omeg, gamm, red) {
 #' Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
 #' @param starts Vector of starting values for optimize. Has two elements, log(lambda) and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
-#' @param K      Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).
+#' @param K      Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red)+1 for reduced counts).
 #' @param red    reduction factor.
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optim.
@@ -403,14 +471,14 @@ tp_MAT <- function(M, omeg, gamm, red) {
 #' Y <- gen_Nmix_closed(1,5,250,0.5)
 #' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)))
 #' @export
-fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, ...) {
+fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, method="BFGS", ...) {
   opt <- optim(par      = starts,
                 fn      = red_Like_closed,
                 nit     = reduction(x = nit, red = red),
-                K       = reduction(x = K,   red = red),
+                K       = reduction(x = K,   red = red)+1,
                 red     = red,
                 VERBOSE = VERBOSE,
-                method  = "BFGS",
+                method  = method,
                 ...)
   return(opt)
 }
@@ -432,10 +500,10 @@ fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...
   opt <- optim(par      = starts,
                 fn      = red_Like_open,
                 nit     = reduction(x = nit, red = red),
-                K       = reduction(x = K,   red = red),
+                K       = reduction(x = K,   red = red)+1,
                 red     = red,
                 VERBOSE = VERBOSE,
-                method  = "BFGS",
+                method  = "CG",
                 ...)
 
   return(opt)
