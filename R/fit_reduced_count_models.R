@@ -1,5 +1,5 @@
 #TODO: sim study to check if threshold is accurate representation of difference in variance of estimates,
-
+#
 
 #' Recommend a reduction value \eqn{r} based on maximum threshold on increased variance.
 #'
