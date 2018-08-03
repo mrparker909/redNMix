@@ -4,14 +4,15 @@
 \alias{fit_red_Nmix_closed}
 \title{Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.}
 \usage{
-fit_red_Nmix_closed(nit, red, K, starts = c(1, 0), VERBOSE = FALSE, ...)
+fit_red_Nmix_closed(nit, red, K, starts = c(1, 0), VERBOSE = FALSE,
+  method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
 
 \item{red}{reduction factor.}
 
-\item{K}{Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).}
+\item{K}{Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red)+1 for reduced counts).}
 
 \item{starts}{Vector of starting values for optimize. Has two elements, log(lambda) and logit(pdet).}
 

@@ -191,16 +191,27 @@ drbinom2 <- function(x, size, prob, red, log=FALSE) {
 #' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
 drpois  <- function(x, lambda, red, log=FALSE) {
-  p <- mapply(FUN = function(x, lambda, red) {
-                             start <- round2(x*red-red/2)
-                             end   <- start + red - 1 # reduction(x,red, FUN=round2)*red+red/2
+  # p <- sapply(FUN = function(x, lambda, red)
+  #   {
+  #   start <- round2(x*red-red/2)
+  #   end   <- start + red - 1 # reduction(x,red, FUN=round2)*red+red/2
+  #
+  #   return(sum(dpois(seq(start,end,1), lambda)))
+  # }, X=x, lambda=lambda, red=red)
 
-                             sum(dpois(seq(start,end,1), lambda))
-                      },
-       x = x,
-       lambda = lambda,
-       red = red)
-  #p <- ppois(end-1, lambda) - ppois(start-1, lambda)
+  # p <- mapply(FUN = function(x, lambda, red)
+  #   {
+  #     start <- round2(x*red-red/2)
+  #     end   <- start + red - 1 # reduction(x,red, FUN=round2)*red+red/2
+  #
+  #     sum(dpois(seq(start,end,1), lambda))
+  #   },
+  #   x = x,
+  #   lambda = lambda,
+  #   red = red)
+  start <- x*red-red/2
+  end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
+  p <- ppois(end-1, lambda) - ppois(start-1, lambda)
   #p[which(p < 0)] <- 0
   if(log) {
     return(log(p))
@@ -495,7 +506,7 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, metho
 #' Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
 #' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
 #' @export
-fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...) {
+fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, method="CG", ...) {
 
   opt <- optim(par      = starts,
                 fn      = red_Like_open,
@@ -503,7 +514,7 @@ fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, ...
                 K       = reduction(x = K,   red = red)+1,
                 red     = red,
                 VERBOSE = VERBOSE,
-                method  = "CG",
+                method  = method,
                 ...)
 
   return(opt)
