@@ -4,7 +4,8 @@
 \alias{fit_red_Nmix_open}
 \title{Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.}
 \usage{
-fit_red_Nmix_open(nit, red, K, starts = c(1, 1, 0, 0), VERBOSE = FALSE, ...)
+fit_red_Nmix_open(nit, red, K, starts = c(1, 1, 0, 0), VERBOSE = FALSE,
+  method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}

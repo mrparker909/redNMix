@@ -176,6 +176,19 @@ drbinom2 <- function(x, size, prob, red, log=FALSE) {
 }
 
 
+#' internal function, needs to be vectorized
+drpois_1  <- function(x, lambda, red, log=FALSE) {
+  start <- x*red-red/2
+  end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
+  p <- ppois(end, lambda) - ppois(start, lambda) #sum(dpois(start:end, lambda)) #
+  #p[which(p < 0)] <- 0
+  if(log) {
+    return(log(p))
+  }
+  return(p)
+}
+
+
 #' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
 #'
 #' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
@@ -191,34 +204,7 @@ drbinom2 <- function(x, size, prob, red, log=FALSE) {
 #' Y <- drpois(seq(1,20,1), 55, 10)
 #' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
-drpois  <- function(x, lambda, red, log=FALSE) {
-  # p <- sapply(FUN = function(x, lambda, red)
-  #   {
-  #   start <- round2(x*red-red/2)
-  #   end   <- start + red - 1 # reduction(x,red, FUN=round2)*red+red/2
-  #
-  #   return(sum(dpois(seq(start,end,1), lambda)))
-  # }, X=x, lambda=lambda, red=red)
-
-  # p <- mapply(FUN = function(x, lambda, red)
-  #   {
-  #     start <- round2(x*red-red/2)
-  #     end   <- start + red - 1 # reduction(x,red, FUN=round2)*red+red/2
-  #
-  #     sum(dpois(seq(start,end,1), lambda))
-  #   },
-  #   x = x,
-  #   lambda = lambda,
-  #   red = red)
-  start <- x*red-red/2
-  end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
-  p <- ppois(end, lambda) - ppois(start, lambda)
-  #p[which(p < 0)] <- 0
-  if(log) {
-    return(log(p))
-  }
-  return(p)
-}
+drpois <- Vectorize(FUN = drpois_1, vectorize.args = c("x", "lambda"))
 
 
 #' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes full quantiles (use drpois for reduced quantiles).
@@ -391,51 +377,17 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
       g2 <- drpois(x = 0:K, lambda = lamb, red = red)
 
       # apply recursive definition of likelihood, add small constant to prevent log(0) issues
-      return( log(sum(g1 * g2 * g_star) + 1e-320) )
+      return( log(sum(g1 * g2 * g_star) + 0) ) # + 1e-320
   }, K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
 
   ll <- sum(unlist(ll_i))
   ###
-
-  # ll <- 0
-  # # loop over sites
-  # for(i in 1:R) {
-  #
-  #   g_star <- rep(1, times=K+1)
-  #   # loop backwards over times t, stopping at t==2
-  #   for(t in T:2) {
-  #
-  #     # allocate memory for vector
-  #     g1_t <- numeric(K+1)
-  #
-  #     # loop over possible value of N (0 to K) at time t
-  #     g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
-  #     g1_t_star <- g1_t * g_star
-  #
-  #     # update g_star
-  #     g_star = g3 %*% g1_t_star
-  #   }
-  #
-  #   # allocate memory for vectors
-  #   g1 <- numeric(K+1)
-  #   g2 <- numeric(K+1)
-  #
-  #   # loop over possible values of N (0 to K) at time t==1
-  #   g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
-  #   g2 <- drpois(x = 0:K, lambda = lamb, red = red)
-  #
-  #   # apply recursive definition of likelihood
-  #   ll_i <- g1 * g2 * g_star
-  #
-  #   ll   <- ll + log(sum(ll_i) + 1e-200)
-  # }
 
   if(VERBOSE) { print(paste0("log likelihood: ",ll)) }
   return(-1*ll)
 }
 
 
-#' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
 #' Not Vectorized.
 tp_jk <- function(j,k,omeg,gamm,red) {
   p  <- 0
@@ -447,7 +399,8 @@ tp_jk <- function(j,k,omeg,gamm,red) {
   return(p)
 }
 
-# can this be run as a parallel process using multiple cores?
+#' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
+#' can this be run as a parallel process using multiple cores?
 tp_jk_V <- function(j_vec,k_vec,omeg,gamm,red) {
 
   p <- mapply(FUN = function(j,k,omeg,gamm,red) {
@@ -487,7 +440,7 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, metho
   opt <- optim(par      = starts,
                 fn      = red_Like_closed,
                 nit     = reduction(x = nit, red = red),
-                K       = reduction(x = K,   red = red)+1,
+                K       = reduction(x = K,   red = red),
                 red     = red,
                 VERBOSE = VERBOSE,
                 method  = method,
@@ -512,7 +465,7 @@ fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, met
   opt <- optim(par      = starts,
                 fn      = red_Like_open,
                 nit     = reduction(x = nit, red = red),
-                K       = reduction(x = K,   red = red)+1,
+                K       = reduction(x = K,   red = red),
                 red     = red,
                 VERBOSE = VERBOSE,
                 method  = method,
