@@ -211,7 +211,7 @@ drpois  <- function(x, lambda, red, log=FALSE) {
   #   red = red)
   start <- x*red-red/2
   end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
-  p <- ppois(end-1, lambda) - ppois(start-1, lambda)
+  p <- ppois(end, lambda) - ppois(start, lambda)
   #p[which(p < 0)] <- 0
   if(log) {
     return(log(p))
@@ -506,7 +506,7 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, metho
 #' Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
 #' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
 #' @export
-fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, method="CG", ...) {
+fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, method="BFGS", ...) {
 
   opt <- optim(par      = starts,
                 fn      = red_Like_open,
