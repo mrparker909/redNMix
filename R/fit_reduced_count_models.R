@@ -360,7 +360,7 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
   g3 <- matrix(0, nrow = K+1, ncol=K+1)
   g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red)
 
-  # apply over sites (1 to R)
+  # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
   ll_i  <- lapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
       # loop backwards over times t, stopping at t==2
       for(t in T:2) {
@@ -377,7 +377,7 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
       g2 <- drpois(x = 0:K, lambda = lamb, red = red)
 
       # apply recursive definition of likelihood, add small constant to prevent log(0) issues
-      return( log(sum(g1 * g2 * g_star) + 0) ) # + 1e-320
+      return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
   }, K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
 
   ll <- sum(unlist(ll_i))
@@ -413,8 +413,6 @@ tp_jk_V <- function(j_vec,k_vec,omeg,gamm,red) {
 
   return(p)
 }
-
-tp_jk_Vec <- Vectorize(tp_jk)
 
 #' Internal function, calculates transition probability matrix (transition from row pop to column pop)
 tp_MAT <- function(M, omeg, gamm, red) {
