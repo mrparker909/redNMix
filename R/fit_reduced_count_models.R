@@ -234,8 +234,9 @@ drpois2 <- function(x, lambda, red, log=FALSE) {
 #' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
+#' @param PARALLELIZE If true, will use as many cores as are available (initialize with START_PARALLEL(num_cores)), up to the number of sites R.
 #' @export
-red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
+red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
@@ -245,18 +246,37 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
 
   # TODO: optimize this so it is more efficient!
   l <- 0
-  for(i in 1:R) {
-    li <- 0
-    ni <- max(Y[i,])
+  if(PARALLELIZE) {
+    ###
+    li <- foreach(i=1:R) %dopar% {
+      li <- 0
+      ni <- max(Y[i,])
 
-    for(Ni in ni:K) {
-      lit <- 1
-      for(t in 1:T) {
-        lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+      for(Ni in ni:K) {
+        lit <- 1
+        for(t in 1:T) {
+          lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+        }
+        li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
       }
-      li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
+      return(log(li))
     }
-    l <- l+log(li)
+    l <- sum(unlist(li))
+    ###
+  } else {
+    for(i in 1:R) {
+      li <- 0
+      ni <- max(Y[i,])
+
+      for(Ni in ni:K) {
+        lit <- 1
+        for(t in 1:T) {
+          lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
+        }
+        li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
+      }
+      l <- l+log(li)
+    }
   }
   if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
@@ -431,10 +451,12 @@ tp_MAT <- function(M, omeg, gamm, red) {
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optim.
 #' @examples
-#' Y <- gen_Nmix_closed(1,5,250,0.5)
-#' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)))
+#' START_PARALLEL(num_cores=4)
+#' Y <- gen_Nmix_closed(8,8,250,0.5)
+#' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
+#' END_PARALLEL()
 #' @export
-fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
   opt <- optim(par      = starts,
                 fn      = red_Like_closed,
                 nit     = reduction(x = nit, red = red),
@@ -442,10 +464,26 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, metho
                 red     = red,
                 VERBOSE = VERBOSE,
                 method  = method,
+                PARALLELIZE = PARALLELIZE,
                 ...)
   return(opt)
 }
 
+#' Used to initialize parallel computing (useful for likelihood calculations which can be computationally intensive).
+#' @param num_cores Number of cores to use for parallel processing.
+#' @export
+START_PARALLEL <- function(num_cores) {
+  require(doParallel)
+  require(foreach)
+  registerDoParallel(cores=num_cores)
+}
+
+#' Used to end parallel computing.
+#' @export
+END_PARALLEL <- function() {
+  require(doParallel)
+  stopImplicitCluster()
+}
 
 #' Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.
 #' @param starts Vector with four elements, log(lambda), log(gamma), logit(omega), and logit(pdet).
@@ -458,7 +496,7 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, metho
 #' Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
 #' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
 #' @export
-fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
 
   opt <- optim(par      = starts,
                 fn      = red_Like_open,

@@ -5,7 +5,7 @@
 \title{Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.}
 \usage{
 fit_red_Nmix_closed(nit, red, K, starts = c(1, 0), VERBOSE = FALSE,
-  method = "BFGS", ...)
+  PARALLELIZE = FALSE, method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -24,6 +24,8 @@ fit_red_Nmix_closed(nit, red, K, starts = c(1, 0), VERBOSE = FALSE,
 Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
 }
 \examples{
-Y <- gen_Nmix_closed(1,5,250,0.5)
-out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)))
+START_PARALLEL(num_cores=4)
+Y <- gen_Nmix_closed(4,5,250,0.5)
+out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
+END_PARALLEL
 }
