@@ -5,7 +5,7 @@
 \title{Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.}
 \usage{
 fit_red_Nmix_open(nit, red, K, starts = c(1, 1, 0, 0), VERBOSE = FALSE,
-  method = "BFGS", ...)
+  PARALLELIZE = FALSE, method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -24,6 +24,8 @@ fit_red_Nmix_open(nit, red, K, starts = c(1, 1, 0, 0), VERBOSE = FALSE,
 Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.
 }
 \examples{
+START_PARALLEL(num_cores=4)
 Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
 out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
+END_PARALLEL()
 }

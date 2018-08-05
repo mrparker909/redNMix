@@ -234,7 +234,7 @@ drpois2 <- function(x, lambda, red, log=FALSE) {
 #' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
-#' @param PARALLELIZE If true, will use as many cores as are available (initialize with START_PARALLEL(num_cores)), up to the number of sites R.
+#' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)), must be at least the number of sites R.
 #' @export
 red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
@@ -247,6 +247,7 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLEL
   # TODO: optimize this so it is more efficient!
   l <- 0
   if(PARALLELIZE) {
+    if(foreach::getDoParWorkers() < R) { stop("ERROR: Parallelization requires as many threads as sites, use START_PARALLEL(num_cores=num_sites)") }
     ###
     li <- foreach(i=1:R) %dopar% {
       li <- 0
@@ -354,9 +355,10 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLEL
 #' @param K       Upper bound on summations (reduced counts upper bound).
 #' @param red     Reduction factor
 #' @param VERBOSE If true, prints the log likelihood to console.
+#' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)), must be at least the number of sites R.
 #' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
 #' @export
-red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
+red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
@@ -378,10 +380,12 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
   # g3 is the transition probability matrix
   # allocate memory for matrix
   g3 <- matrix(0, nrow = K+1, ncol=K+1)
-  g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red)
+  g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red, PARALLELIZE=PARALLELIZE)
 
-  # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
-  ll_i  <- lapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
+  ll_i <- NULL
+  if(PARALLELIZE) {
+    if(foreach::getDoParWorkers() < R) { stop("ERROR: Parallelization requires as many threads as sites, use START_PARALLEL(num_cores=num_sites)") }
+    ll_i <- foreach(i=1:R) %dopar% {
       # loop backwards over times t, stopping at t==2
       for(t in T:2) {
         # size takes possible value of N (0 to K) at time t (for t > 1)
@@ -396,10 +400,30 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
       g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
       g2 <- drpois(x = 0:K, lambda = lamb, red = red)
 
-      # apply recursive definition of likelihood, add small constant to prevent log(0) issues
-      return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
-  }, K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
+      # apply recursive definition of likelihood
+      return( log(sum(g1 * g2 * g_star)) )
+    }
+  } else {
+    # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
+    ll_i  <- lapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
+        # loop backwards over times t, stopping at t==2
+        for(t in T:2) {
+          # size takes possible value of N (0 to K) at time t (for t > 1)
+          g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
+          g1_t_star <- g1_t * g_star
 
+          # update g_star
+          g_star = g3 %*% g1_t_star
+        }
+
+        # size takes possible values of N (0 to K) at time t==1
+        g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
+        g2 <- drpois(x = 0:K, lambda = lamb, red = red)
+
+        # apply recursive definition of likelihood
+        return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
+    }, K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
+  }
   ll <- sum(unlist(ll_i))
   ###
 
@@ -435,10 +459,15 @@ tp_jk_V <- function(j_vec,k_vec,omeg,gamm,red) {
 }
 
 #' Internal function, calculates transition probability matrix (transition from row pop to column pop)
-tp_MAT <- function(M, omeg, gamm, red) {
+tp_MAT <- function(M, omeg, gamm, red, PARALLELIZE=FALSE) {
   K1 <- 1:(nrow(M))
-  M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V, omeg, gamm, red)
-
+  if(PARALLELIZE) {
+    M <- foreach(i = K1-1, .combine = cbind) %dopar% {
+      tp_jk_V(j_vec = K1-1, k_vec = i, omeg, gamm, red)
+    }
+  } else {
+    M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V, omeg, gamm, red)
+  }
   return(M)
 }
 
@@ -493,11 +522,12 @@ END_PARALLEL <- function() {
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optim.
 #' @examples
-#' Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
-#' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
+#' START_PARALLEL(num_cores=4)
+#' Y <- gen_Nmix_open(num_sites = 4, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
+#' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
+#' END_PARALLEL()
 #' @export
 fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
-
   opt <- optim(par      = starts,
                 fn      = red_Like_open,
                 nit     = reduction(x = nit, red = red),
@@ -505,8 +535,8 @@ fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, PAR
                 red     = red,
                 VERBOSE = VERBOSE,
                 method  = method,
+                PARALLELIZE = PARALLELIZE,
                 ...)
-
   return(opt)
 }
 

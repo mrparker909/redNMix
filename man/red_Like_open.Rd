@@ -4,7 +4,8 @@
 \alias{red_Like_open}
 \title{Internal function. Used to calculate the negative of the log likelihood.}
 \usage{
-red_Like_open(par, nit, K, red, FUN = round, VERBOSE = FALSE)
+red_Like_open(par, nit, K, red, FUN = round, VERBOSE = FALSE,
+  PARALLELIZE = FALSE)
 }
 \arguments{
 \item{par}{Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).}
@@ -16,6 +17,8 @@ red_Like_open(par, nit, K, red, FUN = round, VERBOSE = FALSE)
 \item{red}{Reduction factor}
 
 \item{VERBOSE}{If true, prints the log likelihood to console.}
+
+\item{PARALLELIZE}{If true, will use as many cores as are available (initialize with START_PARALLEL(num_cores)), up to the number of sites R.}
 }
 \description{
 Internal function. Used to calculate the negative of the log likelihood.

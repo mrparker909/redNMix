@@ -1,12 +1,13 @@
 Package: redNMix
 Type: Package
 Title: Package For Fitting and Analyzing Reduced Count N-Mixture Models
-Version: 0.1.1
+Version: 0.1.2
 Author: Matthew R. P. Parker
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
+Description: Package For Fitting and Analyzing Reduced Count N-Mixture Models.
 License: Creative Commons
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 6.0.1
 Imports:
+  foreach,
+  doParallel

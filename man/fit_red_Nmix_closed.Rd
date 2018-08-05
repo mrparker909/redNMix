@@ -25,7 +25,7 @@ Find maximum likelihood estimates for model parameters log(lambda) and logit(pde
 }
 \examples{
 START_PARALLEL(num_cores=4)
-Y <- gen_Nmix_closed(4,5,250,0.5)
+Y <- gen_Nmix_closed(8,8,250,0.5)
 out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
-END_PARALLEL
+END_PARALLEL()
 }
