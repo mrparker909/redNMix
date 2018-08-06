@@ -18,7 +18,7 @@ red_Like_open(par, nit, K, red, FUN = round, VERBOSE = FALSE,
 
 \item{VERBOSE}{If true, prints the log likelihood to console.}
 
-\item{PARALLELIZE}{If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)), must be at least the number of sites R.}
+\item{PARALLELIZE}{If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
 }
 \description{
 Internal function. Used to calculate the negative of the log likelihood.

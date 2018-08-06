@@ -61,13 +61,14 @@ gen_Nmix_closed <- function(num_sites,num_times,lambda,pdet) {
 
 # rounding in R rounds to nearest even number (eg 0.5 rounds to 0), this function does
 # "normal" rounding (eg 0.5 rounds to 1)
-round2 = function(x, n=0) {
+round2_ = function(x, n=0) {
   sgn = sign(x)
   z = abs(x)*10^n
   z = trunc(z + 0.5)
   z = z/10^n
   z*sgn
 }
+round2 <- compiler::cmpfun(round2_)
 
 #' Generate a population/observation pair with the structure of an open N-mixture model
 #'
@@ -126,6 +127,17 @@ reduction <- function(x, red, FUN=round2) {
 }
 
 
+drbinom_ <- function(x, size, prob, red, log=FALSE) {
+  start <- x*red - red/2
+  end   <- start + red
+
+  p <- pbinom(end, size*red, prob) - pbinom(start, size*red, prob)
+  #if(p < 0) { print(paste("drbinom < 0!", "x=",x,"size=",size, "prob=",prob, "red=",red))}
+  if(log) {
+    return(log(p))
+  }
+  return(p)
+}
 #' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
 #' takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
 #'
@@ -138,46 +150,12 @@ reduction <- function(x, red, FUN=round2) {
 #' Y <- drbinom(0:20, 20, 0.3, 10)
 #' plot(Y, xlab="Y~rBinom(N=20,p=0.3,r=10)", ylab="P[Y=y]")
 #' @export
-drbinom <- function(x, size, prob, red, log=FALSE) {
-  start <- x*red - red/2
-  end   <- start + red
+drbinom <- compiler::cmpfun(drbinom_)
 
-  p <- pbinom(end, size*red, prob) - pbinom(start, size*red, prob)
-  #if(p < 0) { print(paste("drbinom < 0!", "x=",x,"size=",size, "prob=",prob, "red=",red))}
-  if(log) {
-    return(log(p))
-  }
-  return(p)
-}
-
-
-#' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
-#' takes full quantiles rather than reduced quantiles (use drbinom for reduced quantiles).
-#'
-#' @param x Full count quantile (alternatively input r*x if x is a reduced count quantile).
-#' @param size Number of trials.
-#' @param prob Probability of success for each trial.
-#' @param red The factor r by which to reduce the input x.
-#' @return The probability of observing quantile \eqn{R(x;r)}
-#' @examples
-#' Y <- drbinom2(0:200, 200, 0.3, 10)[seq(1,201,10)]
-#' plot(Y, xlab="Y=R(X;10), X~Binomial(N=200,p=0.3)", ylab="P[Y=y]")
-#' @export
-drbinom2 <- function(x, size, prob, red, log=FALSE) {
-  start  <- reduction(x,red, FUN=round2)*red-red/2
-  end    <- start + red# reduction(x,red, FUN=round2)*red+red/2
-
-  p <- pbinom(end, size, prob) - pbinom(start, size, prob)
-
-  if(log) {
-    return(log(p))
-  }
-  return(p)
-}
 
 
 #' internal function, needs to be vectorized
-drpois_1  <- function(x, lambda, red, log=FALSE) {
+drpois_1_  <- function(x, lambda, red, log=FALSE) {
   start <- x*red-red/2
   end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
   p <- ppois(end, lambda) - ppois(start, lambda) #sum(dpois(start:end, lambda)) #
@@ -187,8 +165,9 @@ drpois_1  <- function(x, lambda, red, log=FALSE) {
   }
   return(p)
 }
+drpois_1 <- compiler::cmpfun(drpois_1_)
 
-
+drpois_ <- Vectorize(FUN = drpois_1, vectorize.args = c("x", "lambda"))
 #' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
 #'
 #' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
@@ -204,39 +183,11 @@ drpois_1  <- function(x, lambda, red, log=FALSE) {
 #' Y <- drpois(seq(1,20,1), 55, 10)
 #' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
-drpois <- Vectorize(FUN = drpois_1, vectorize.args = c("x", "lambda"))
+drpois <- compiler::cmpfun(drpois_)
 
 
-#' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes full quantiles (use drpois for reduced quantiles).
-#'
-#' @param x Full count quantile (alternatively input r*x if x is a reduced count quantile).
-#' @param lambda Mean of the full count poisson distribution.
-#' @param red The factor r by which to reduce the input x.
-#' @return The probability of observing quantile \eqn{R(x;r)}
-#' @examples
-#' Y <- drpois2(seq(1,200,10), 55, 10)
-#' plot(Y, xlab="Y=R(X;10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
-#' @export
-drpois2 <- function(x, lambda, red, log=FALSE) {
-  start <- reduction(x,red, FUN=round2)*red-red/2
-  end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
 
-  p <- ppois(end, lambda) - ppois(start, lambda)
-  if(log) {
-    return(log(p))
-  }
-  return(p)
-}
-
-#' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par Vector with two elements, log(lambda) and logis(pdet).
-#' @param nit R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
-#' @param K   Upper bound on summations (input reduced count upper bound).
-#' @param red reduction factor
-#' @param VERBOSE If true, prints the calculated log likelihood to console.
-#' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)), must be at least the number of sites R.
-#' @export
-red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
@@ -282,83 +233,19 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLEL
   if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
 }
-# red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
-#   T <- ncol(nit)
-#   R <- nrow(nit)
-#
-#   pdet <- plogis(par[2])
-#   lamb <- exp(par[1])
-#   Y <- nit
-#
-#   # TODO: optimize this so it is more efficient!
-#   l <- 0
-#   for(i in 1:R) {
-#     li <- 0
-#     ni <- max(Y[i,])
-#
-#     for(Ni in ni:K) {
-#       lit2 <- lapply(X = 1:T, FUN = function(t, ...) {
-#         drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-#       }, Y=Y, i=i, Ni=Ni, pdet=pdet, red=red)
-#
-#       lit <- prod(unlist(lit2))
-#
-#       li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
-#       # lit <- 1
-#       # for(t in 1:T) {
-#       #   lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-#       # }
-#       # li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
-#     }
-#     l <- l+log(li+1e-320)
-#   }
-#   if(VERBOSE) {print(paste0("log likelihood: ",l))}
-#   return(-1*l)
-# }
-# red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE) {
-#   T <- ncol(nit)
-#   R <- nrow(nit)
-#
-#   pdet <- plogis(par[2])
-#   lamb <- exp(par[1])
-#   Y <- nit
-#
-#   l <- 0
-#   for(i in 1:R) {
-#     ni  <- max(Y[i,])
-#     niK <- ni:K
-#     li  <- numeric(length(niK))
-#
-#     dr  <- drpois(x = niK, lambda = lamb, red=red)
-#     li2 <- lapply(X = niK, FUN = function(Ni, ...)
-#       {
-#          lit2 <- numeric(T)
-#          lit2 <- lapply(X = 1:T, FUN = function(t, ...)
-#               {
-#                 drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-#               }, Ni, ...)
-#          lit  <- prod(unlist(lit2))
-#       }, Y=Y, i=i, pdet=pdet, red=red)
-#
-#     li  <- sum(unlist(li2)*dr)
-#     if(li <= 0) { li <- 1e-200 }
-#     l   <- l+log(li+1e-200)
-#   }
-#   if(VERBOSE) {print(paste0("log likelihood: ",l))}
-#   return(-1*l)
-# }
-
-
 #' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par     Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
-#' @param nit     R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
-#' @param K       Upper bound on summations (reduced counts upper bound).
-#' @param red     Reduction factor
-#' @param VERBOSE If true, prints the log likelihood to console.
-#' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)), must be at least the number of sites R.
-#' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
+#' @param par Vector with two elements, log(lambda) and logis(pdet).
+#' @param nit R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param K   Upper bound on summations (input reduced count upper bound).
+#' @param red reduction factor
+#' @param VERBOSE If true, prints the calculated log likelihood to console.
+#' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
 #' @export
-red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_closed <- compiler::cmpfun(red_Like_closed_)
+
+
+
+red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
@@ -383,7 +270,7 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZ
   g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red, PARALLELIZE=PARALLELIZE)
 
   # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
-  ll_i  <- lapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
+  ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
     # loop backwards over times t, stopping at t==2
     for(t in T:2) {
       # size takes possible value of N (0 to K) at time t (for t > 1)
@@ -400,7 +287,7 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZ
 
     # apply recursive definition of likelihood
     return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
-  }, K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
+  }, FUN.VALUE = numeric(1), K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
 
   ll <- sum(unlist(ll_i))
   ###
@@ -408,7 +295,16 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZ
   if(VERBOSE) { print(paste0("log likelihood: ",ll)) }
   return(-1*ll)
 }
-
+#' Internal function. Used to calculate the negative of the log likelihood.
+#' @param par     Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
+#' @param nit     R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param K       Upper bound on summations (reduced counts upper bound).
+#' @param red     Reduction factor
+#' @param VERBOSE If true, prints the log likelihood to console.
+#' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
+#' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
+#' @export
+red_Like_open <- compiler::cmpfun(red_Like_open_)
 
 #' Not Vectorized.
 tp_jk <- function(j,k,omeg,gamm,red) {
@@ -425,7 +321,7 @@ tp_jk_VV <- Vectorize(tp_jk, vectorize.args = c("j", "k"))
 
 #' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
 #' can this be run as a parallel process using multiple cores?
-tp_jk_V <- function(j_vec,k_vec,omeg,gamm,red) {
+tp_jk_V_ <- function(j_vec,k_vec,omeg,gamm,red) {
 
   p <- mapply(FUN = function(j,k,omeg,gamm,red) {
     rb <- drbinom(x = 0:min(j,k), size = j, prob = omeg, red = red)
@@ -437,9 +333,11 @@ tp_jk_V <- function(j_vec,k_vec,omeg,gamm,red) {
 
   return(p)
 }
+tp_jk_V <- compiler::cmpfun(tp_jk_V_)
+
 
 #' Internal function, calculates transition probability matrix (transition from row pop to column pop)
-tp_MAT <- function(M, omeg, gamm, red, PARALLELIZE=FALSE) {
+tp_MAT_ <- function(M, omeg, gamm, red, PARALLELIZE=FALSE) {
   K1 <- 1:(nrow(M))
   if(PARALLELIZE) {
     M <- foreach(a = K1-1, .combine = rbind) %dopar% {
@@ -450,6 +348,7 @@ tp_MAT <- function(M, omeg, gamm, red, PARALLELIZE=FALSE) {
   }
   return(M)
 }
+tp_MAT <- compiler::cmpfun(tp_MAT_)
 
 
 #' Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
