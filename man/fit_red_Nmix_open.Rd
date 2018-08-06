@@ -25,7 +25,7 @@ Find maximum likelihood estimates for model parameters log(lambda), log(gamma), 
 }
 \examples{
 START_PARALLEL(num_cores=4)
-Y <- gen_Nmix_open(num_sites = 3, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
-out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5))
+Y <- gen_Nmix_open(num_sites = 4, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
+out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
 END_PARALLEL()
 }

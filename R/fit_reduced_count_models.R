@@ -247,7 +247,7 @@ red_Like_closed <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLEL
   # TODO: optimize this so it is more efficient!
   l <- 0
   if(PARALLELIZE) {
-    if(foreach::getDoParWorkers() < R) { stop("ERROR: Parallelization requires as many threads as sites, use START_PARALLEL(num_cores=num_sites)") }
+    #if(foreach::getDoParWorkers() < R) { stop("ERROR: Parallelization requires as many threads as sites, use START_PARALLEL(num_cores=num_sites)") }
     ###
     li <- foreach(i=1:R) %dopar% {
       li <- 0
@@ -382,48 +382,26 @@ red_Like_open <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZ
   g3 <- matrix(0, nrow = K+1, ncol=K+1)
   g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red, PARALLELIZE=PARALLELIZE)
 
-  ll_i <- NULL
-  if(PARALLELIZE) {
-    if(foreach::getDoParWorkers() < R) { stop("ERROR: Parallelization requires as many threads as sites, use START_PARALLEL(num_cores=num_sites)") }
-    ll_i <- foreach(i=1:R) %dopar% {
-      # loop backwards over times t, stopping at t==2
-      for(t in T:2) {
-        # size takes possible value of N (0 to K) at time t (for t > 1)
-        g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
-        g1_t_star <- g1_t * g_star
+  # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
+  ll_i  <- lapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
+    # loop backwards over times t, stopping at t==2
+    for(t in T:2) {
+      # size takes possible value of N (0 to K) at time t (for t > 1)
+      g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
+      g1_t_star <- g1_t * g_star
 
-        # update g_star
-        g_star = g3 %*% g1_t_star
-      }
-
-      # size takes possible values of N (0 to K) at time t==1
-      g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
-      g2 <- drpois(x = 0:K, lambda = lamb, red = red)
-
-      # apply recursive definition of likelihood
-      return( log(sum(g1 * g2 * g_star)) )
+      # update g_star
+      g_star = g3 %*% g1_t_star
     }
-  } else {
-    # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
-    ll_i  <- lapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
-        # loop backwards over times t, stopping at t==2
-        for(t in T:2) {
-          # size takes possible value of N (0 to K) at time t (for t > 1)
-          g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
-          g1_t_star <- g1_t * g_star
 
-          # update g_star
-          g_star = g3 %*% g1_t_star
-        }
+    # size takes possible values of N (0 to K) at time t==1
+    g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
+    g2 <- drpois(x = 0:K, lambda = lamb, red = red)
 
-        # size takes possible values of N (0 to K) at time t==1
-        g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
-        g2 <- drpois(x = 0:K, lambda = lamb, red = red)
+    # apply recursive definition of likelihood
+    return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
+  }, K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
 
-        # apply recursive definition of likelihood
-        return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
-    }, K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
-  }
   ll <- sum(unlist(ll_i))
   ###
 
@@ -442,6 +420,8 @@ tp_jk <- function(j,k,omeg,gamm,red) {
 
   return(p)
 }
+
+tp_jk_VV <- Vectorize(tp_jk, vectorize.args = c("j", "k"))
 
 #' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
 #' can this be run as a parallel process using multiple cores?
@@ -462,8 +442,8 @@ tp_jk_V <- function(j_vec,k_vec,omeg,gamm,red) {
 tp_MAT <- function(M, omeg, gamm, red, PARALLELIZE=FALSE) {
   K1 <- 1:(nrow(M))
   if(PARALLELIZE) {
-    M <- foreach(i = K1-1, .combine = cbind) %dopar% {
-      tp_jk_V(j_vec = K1-1, k_vec = i, omeg, gamm, red)
+    M <- foreach(a = K1-1, .combine = rbind) %dopar% {
+        tp_jk_V(j_vec = a, k_vec = 1:nrow(M)-1, omeg = omeg, gamm = gamm, red = red)
     }
   } else {
     M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V, omeg, gamm, red)

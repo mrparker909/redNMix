@@ -4,7 +4,7 @@
 \alias{tp_MAT}
 \title{Internal function, calculates transition probability matrix (transition from row pop to column pop)}
 \usage{
-tp_MAT(M, omeg, gamm, red)
+tp_MAT(M, omeg, gamm, red, PARALLELIZE = FALSE)
 }
 \description{
 Internal function, calculates transition probability matrix (transition from row pop to column pop)
