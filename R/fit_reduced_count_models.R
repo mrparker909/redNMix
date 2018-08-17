@@ -198,7 +198,7 @@ red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLE
   # TODO: optimize this so it is more efficient!
   l <- 0
   if(PARALLELIZE) {
-   i <- foreach(i=1:R) %dopar% {
+   li <- foreach(i=1:R) %dopar% {
       li <- 0
       ni <- max(Y[i,])
 
