@@ -4,7 +4,7 @@
 #' Recommend a reduction value \eqn{r} based on maximum threshold on increased variance.
 #'
 #' @param nit Full counts.
-#' @param threshold Desired maximum ratio of \eqn{v2/v1}, where \eqn{v2} is the variance of the full counts,
+#' @param threshold Desired maximum ratio of \eqn{v1/v2}, where \eqn{v2} is the variance of the full counts,
 #'                  and \eqn{v1} is the variance of the reduced counts, scaled by \eqn{r^2}.
 #' @return Recommended maximum reduction factor r to use when fitting reduced count model with given sample nit.
 #' @examples
@@ -198,9 +198,7 @@ red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLE
   # TODO: optimize this so it is more efficient!
   l <- 0
   if(PARALLELIZE) {
-    #if(foreach::getDoParWorkers() < R) { stop("ERROR: Parallelization requires as many threads as sites, use START_PARALLEL(num_cores=num_sites)") }
-    ###
-    li <- foreach(i=1:R) %dopar% {
+   i <- foreach(i=1:R) %dopar% {
       li <- 0
       ni <- max(Y[i,])
 

@@ -9,7 +9,7 @@ max_r(nit, threshold = 1.1)
 \arguments{
 \item{nit}{Full counts.}
 
-\item{threshold}{Desired maximum ratio of \eqn{v2/v1}, where \eqn{v2} is the variance of the full counts,
+\item{threshold}{Desired maximum ratio of \eqn{v1/v2}, where \eqn{v2} is the variance of the full counts,
 and \eqn{v1} is the variance of the reduced counts, scaled by \eqn{r^2}.}
 }
 \value{
