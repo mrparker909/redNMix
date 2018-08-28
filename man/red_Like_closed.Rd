@@ -10,7 +10,7 @@ red_Like_closed(par, nit, K, red, FUN = round, VERBOSE = FALSE,
 \arguments{
 \item{par}{Vector with two elements, log(lambda) and logis(pdet).}
 
-\item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
+\item{nit}{data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
 
 \item{K}{Upper bound on summations (input reduced count upper bound).}
 

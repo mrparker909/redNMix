@@ -188,42 +188,44 @@ drpois <- compiler::cmpfun(drpois_)
 
 
 red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
-  T <- ncol(nit)
-  R <- nrow(nit)
+  T <- length(unique(nit$time))
+  R <- length(unique(nit$site))
 
   pdet <- plogis(par[2])
   lamb <- exp(par[1])
-  Y <- nit
+  Y    <- nit
+  Y_df <- nit
 
-  # TODO: optimize this so it is more efficient!
+  # TODO: can this be made more efficient using matrix multiplications?
   l <- 0
   if(PARALLELIZE) {
    li <- foreach(i=1:R) %dopar% {
-      li <- 0
-      ni <- max(Y[i,])
+     Yi_df <- Y_df[which(Y_df$site==i),]
+     li <- 0
+     ni <- max(Yi_df$count)
 
-      for(Ni in ni:K) {
-        lit <- 1
-        for(t in 1:T) {
-          lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-        }
-        li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
-      }
-      return(log(li))
+     for(Ni in ni:K) {
+       lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=red))
+
+       lit_ <- prod(lit)
+       li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red)
+     }
+     return(log(li))
     }
     l <- sum(unlist(li))
     ###
   } else {
+
     for(i in 1:R) {
+      Yi_df <- Y_df[which(Y_df$site==i),]
       li <- 0
-      ni <- max(Y[i,])
+      ni <- max(Yi_df$count)
 
       for(Ni in ni:K) {
-        lit <- 1
-        for(t in 1:T) {
-          lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = pdet, red=red)
-        }
-        li <- li + lit*drpois(x = Ni, lambda = lamb, red=red)
+        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=red))
+
+        lit_ <- prod(lit)
+        li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red)
       }
       l <- l+log(li)
     }
@@ -233,7 +235,7 @@ red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLE
 }
 #' Internal function. Used to calculate the negative of the log likelihood.
 #' @param par Vector with two elements, log(lambda) and logis(pdet).
-#' @param nit R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
@@ -363,10 +365,20 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' END_PARALLEL()
 #' @export
 fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+  Y_m <- nit
+  row.names(Y_m) <- 1:nrow(nit)
+  colnames(Y_m) <- 1:ncol(nit)
+
+  Y_df <- reshape2::melt(Y_m)
+  colnames(Y_df) <- c("site", "time", "count")
+  Y_df$count <- reduction(x = Y_df$count, red = red)
+
+  red_K  <- reduction(x = K,   red = red)
+
   opt <- optim(par      = starts,
                 fn      = red_Like_closed,
-                nit     = reduction(x = nit, red = red),
-                K       = reduction(x = K,   red = red),
+                nit     = Y_df,
+                K       = red_K,
                 red     = red,
                 VERBOSE = VERBOSE,
                 method  = method,
