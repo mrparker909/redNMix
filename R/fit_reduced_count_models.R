@@ -320,7 +320,6 @@ tp_jk <- function(j,k,omeg,gamm,red) {
 tp_jk_VV <- Vectorize(tp_jk, vectorize.args = c("j", "k"))
 
 #' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
-#' can this be run as a parallel process using multiple cores?
 tp_jk_V_ <- function(j_vec,k_vec,omeg,gamm,red) {
 
   p <- mapply(FUN = function(j,k,omeg,gamm,red) {

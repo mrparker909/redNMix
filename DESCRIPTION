@@ -10,4 +10,5 @@ LazyData: true
 RoxygenNote: 6.0.1
 Imports:
   foreach,
-  doParallel
+  doParallel,
+  reshape2
