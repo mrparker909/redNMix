@@ -1,5 +1,3 @@
-#TODO: sim study to check if threshold is accurate representation of difference in variance of estimates,
-#
 
 #' Recommend a reduction value \eqn{r} based on maximum threshold on increased variance.
 #'
@@ -204,11 +202,11 @@ red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLE
      li <- 0
      ni <- max(Yi_df$count)
 
-     for(Ni in ni:K) {
-       lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=red))
+     for(Ni in ni:K[i,1]) {
+       lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
 
        lit_ <- prod(lit)
-       li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red)
+       li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
      }
      return(log(li))
     }
@@ -221,11 +219,11 @@ red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLE
       li <- 0
       ni <- max(Yi_df$count)
 
-      for(Ni in ni:K) {
-        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=red))
+      for(Ni in ni:K[i,1]) {
+        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
 
         lit_ <- prod(lit)
-        li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red)
+        li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
       }
       l <- l+log(li)
     }
@@ -237,7 +235,7 @@ red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLE
 #' @param par Vector with two elements, log(lambda) and logis(pdet).
 #' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param K   Upper bound on summations (input reduced count upper bound).
-#' @param red reduction factor
+#' @param red reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
 #' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
 #' @export
@@ -258,23 +256,69 @@ red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELI
 
   # g1_t_star[k] holds g1[k] * g_star[k]
   # allocate memory for vectors
-  g1_t_star <- rep(0, times=K+1)
-  g1_t      <- numeric(K+1)
-  g1        <- numeric(K+1)
-  g2        <- numeric(K+1)
-  g_star    <- rep(1, times=K+1)
+
+  # g1_t_star <- rep(0, times=K+1)
+  # g1_t      <- numeric(K+1)
+  # g1        <- numeric(K+1)
+  # g2        <- numeric(K+1)
+  # g_star    <- rep(1, times=K+1)
 
   # g3 is the transition probability matrix
   # allocate memory for matrix
-  g3 <- matrix(0, nrow = K+1, ncol=K+1)
-  g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red, PARALLELIZE=PARALLELIZE)
+  #g3 <- matrix(0, nrow = K+1, ncol=K+1)
+  #g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red, PARALLELIZE=PARALLELIZE)
+
+  g1_t_star <- list()
+  g1_t      <- list()
+  g1        <- list()
+  g2        <- list()
+  g_star    <- list()
+
+  g3 <- list()
+
+  if(var(as.vector(red))==0) {
+    tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
+    g3[[1]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[1,1], PARALLELIZE=PARALLELIZE)
+    for(i in 1:R) {
+      g3[[i]] <- g3[[1]]
+    }
+  } else {
+    if(PARALLELIZE) {
+      g3 <- foreach(i=1:R, .packages = c("redNMix","foreach")) %dopar% {
+        tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+        tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=FALSE)
+      }
+    } else {
+      for(i in 1:R) {
+        tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+        g3[[i]]        <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=PARALLELIZE)
+      }
+    }
+
+  }
+
+  for(i in 1:R) {
+    g1_t_star[[i]] <- rep(0, times=K[i]+1)
+    g1_t[[i]]      <- numeric(K[i]+1)
+    g1[[i]]        <- numeric(K[i]+1)
+    g2[[i]]        <- numeric(K[i]+1)
+    g_star[[i]]    <- rep(1, times=K[i]+1)
+  }
 
   # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
   ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
+    g3        <- g3[[i]]
+    g1_t_star <- g1_t_star[[i]]
+    g1_t      <- g1_t[[i]]
+    g1        <- g1[[i]]
+    g2        <- g2[[i]]
+    g_star    <- g_star[[i]]
+    K         <- K[i]
+
     # loop backwards over times t, stopping at t==2
     for(t in T:2) {
       # size takes possible value of N (0 to K) at time t (for t > 1)
-      g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red)
+      g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = pdet, red = red[i,t])
       g1_t_star <- g1_t * g_star
 
       # update g_star
@@ -282,8 +326,8 @@ red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELI
     }
 
     # size takes possible values of N (0 to K) at time t==1
-    g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red)
-    g2 <- drpois(x = 0:K, lambda = lamb, red = red)
+    g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red[i,1])
+    g2 <- drpois(x = 0:K, lambda = lamb, red = red[i,1])
 
     # apply recursive definition of likelihood
     return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
@@ -353,26 +397,45 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
 #' @param starts Vector of starting values for optimize. Has two elements, log(lambda) and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
-#' @param K      Upper bound on summations (full count value, eg if K=300 for full counts, K=reduction(300,red)+1 for reduced counts).
-#' @param red    reduction factor.
+#' @param K      Upper bound on summations, either a single number, or a vector of K values, one for each site (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).
+#' @param red    reduction factor, either a number, or a vector of reduction factors (R sites reductions).
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optim.
 #' @examples
 #' START_PARALLEL(num_cores=4)
-#' Y <- gen_Nmix_closed(8,8,250,0.5)
-#' out <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
+#' Y    <- gen_Nmix_closed(8,8,250,0.5)
+#' out  <- fit_red_Nmix_closed(Y$nit, red=10, K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
+#' out2 <- fit_red_Nmix_closed(Y$nit, red=c(10,10,10,10,20,20,40,40), K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
 fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+
   Y_m <- nit
   row.names(Y_m) <- 1:nrow(nit)
   colnames(Y_m) <- 1:ncol(nit)
 
   Y_df <- reshape2::melt(Y_m)
   colnames(Y_df) <- c("site", "time", "count")
-  Y_df$count <- reduction(x = Y_df$count, red = red)
 
-  red_K  <- reduction(x = K,   red = red)
+
+  if(length(red)==1) {
+    red <- rep(x = red, times = nrow(Y_m))
+  }
+
+  if(length(red)!=nrow(Y_m)) { stop("reduction must be either one number, or a vector with length equal to nrow(nit)") }
+
+  red <- matrix(red, nrow=nrow(Y_m), ncol=ncol(Y_m))
+
+  redu <- numeric(nrow(Y_df))
+  temp <- numeric(nrow(Y_df))
+  for(i in 1:nrow(Y_df)) {
+    redu[i] <- red[Y_df$site[i],Y_df$time[i]]
+    temp[i] <- reduction(x = Y_df$count[i], red = redu[i])
+  }
+  Y_df$count <- temp
+  Y_df$reduc <- redu
+
+  red_K  <- reduction(x = matrix(K, nrow=nrow(red), ncol=ncol(red)), red = red)
 
   opt <- optim(par      = starts,
                 fn      = red_Like_closed,
@@ -406,26 +469,32 @@ END_PARALLEL <- function() {
 #' @param starts Vector with four elements, log(lambda), log(gamma), logit(omega), and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param K      Upper bound on summations.
-#' @param red    reduction factor.
+#' @param red    reduction factor, either a number or a vector of length R.
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optim.
 #' @examples
 #' START_PARALLEL(num_cores=4)
-#' Y <- gen_Nmix_open(num_sites = 4, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
-#' out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
+#' Y   <- gen_Nmix_open(num_sites = 5, num_times = 5, lambda = 20, pdet = 0.7, omega = 0.7, gamma = 2)
+#' out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
 fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
-  opt <- optim(par      = starts,
+   if(length(red)==1) {
+     red <- rep(red, times=nrow(nit))
+   }
+   red    <- matrix(red, nrow=nrow(nit), ncol=ncol(nit))
+   red_K  <- reduction(x = matrix(K, nrow=nrow(red), ncol=ncol(red)), red = red)
+
+   opt <- optim(par      = starts,
                 fn      = red_Like_open,
                 nit     = reduction(x = nit, red = red),
-                K       = reduction(x = K,   red = red),
+                K       = red_K,
                 red     = red,
                 VERBOSE = VERBOSE,
                 method  = method,
                 PARALLELIZE = PARALLELIZE,
                 ...)
-  return(opt)
+   return(opt)
 }
 
 #' Plot likelihood given a pdet and range for lambda.
