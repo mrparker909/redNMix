@@ -165,7 +165,7 @@ drpois_1_  <- function(x, lambda, red, log=FALSE) {
 }
 drpois_1 <- compiler::cmpfun(drpois_1_)
 
-drpois_ <- Vectorize(FUN = drpois_1, vectorize.args = c("x", "lambda"))
+
 #' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
 #'
 #' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
@@ -181,7 +181,7 @@ drpois_ <- Vectorize(FUN = drpois_1, vectorize.args = c("x", "lambda"))
 #' Y <- drpois(seq(1,20,1), 55, 10)
 #' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
-drpois <- compiler::cmpfun(drpois_)
+drpois <- drpois_
 
 
 
@@ -286,8 +286,12 @@ red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELI
     if(PARALLELIZE) {
       g3 <- foreach(i=1:R, .packages = c("redNMix","foreach")) %dopar% {
         tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-        tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=FALSE)
+        tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=TRUE)
       }
+      # for(i in 1:R) {
+      #   tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+      #   g3[[i]]        <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=PARALLELIZE)
+      # }
     } else {
       for(i in 1:R) {
         tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
@@ -368,7 +372,7 @@ tp_jk_V_ <- function(j_vec,k_vec,omeg,gamm,red) {
 
   p <- mapply(FUN = function(j,k,omeg,gamm,red) {
     rb <- drbinom(x = 0:min(j,k), size = j, prob = omeg, red = red)
-    rp <- drpois(x = k-0:min(j,k), lambda = gamm, red = red)
+    rp <- drpois_1(x = k-0:min(j,k), lambda = gamm, red = red)
 
     return(sum(rb * rp))
   }, j=j_vec, k=k_vec, omeg=omeg, gamm=gamm,red=red)
