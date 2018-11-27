@@ -10,7 +10,7 @@ fit_red_Nmix_open(nit, red, K, starts = c(1, 1, 0, 0), VERBOSE = FALSE,
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
 
-\item{red}{reduction factor.}
+\item{red}{reduction factor, either a number or a vector of length R.}
 
 \item{K}{Upper bound on summations.}
 
@@ -25,7 +25,7 @@ Find maximum likelihood estimates for model parameters log(lambda), log(gamma), 
 }
 \examples{
 START_PARALLEL(num_cores=4)
-Y <- gen_Nmix_open(num_sites = 4, num_times = 4, lambda = 10, pdet = 0.7, omega = 0.7, gamma = 2)
-out <- fit_red_Nmix_open(nit = Y$nit, red = 1, K = 30, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
+Y   <- gen_Nmix_open(num_sites = 5, num_times = 5, lambda = 20, pdet = 0.7, omega = 0.7, gamma = 2)
+out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
 END_PARALLEL()
 }

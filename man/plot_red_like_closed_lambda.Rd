@@ -4,7 +4,8 @@
 \alias{plot_red_like_closed_lambda}
 \title{Plot likelihood given a pdet and range for lambda.}
 \usage{
-plot_red_like_closed_lambda(nit, startLambda, endLambda, stepsize, pdet, red, K)
+plot_red_like_closed_lambda(nit, startLambda, endLambda, stepsize, pdet,
+  red, K)
 }
 \arguments{
 \item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}

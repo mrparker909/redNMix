@@ -14,7 +14,7 @@ red_Like_closed(par, nit, K, red, FUN = round, VERBOSE = FALSE,
 
 \item{K}{Upper bound on summations (input reduced count upper bound).}
 
-\item{red}{reduction factor}
+\item{red}{reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)}
 
 \item{VERBOSE}{If true, prints the calculated log likelihood to console.}
 

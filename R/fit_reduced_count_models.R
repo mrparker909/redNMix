@@ -1,4 +1,55 @@
 
+#' Find the Most Common Divisor of a data set
+#' @param nit Full counts
+#'
+#' @examples
+#' mcd(c(10,20,30,35,12,18), howmany = 5)
+#'
+#' @export
+mcd <- function(nit, howmany=10) {
+  x <- list()
+  for(n in nit) {
+    x <- c(x,numbers::divisors(n))
+  }
+  y <- unlist(x)
+  howmany <- min(howmany, length(table(y)))
+  sort(table(y),decreasing=TRUE)[1:howmany]
+}
+
+#' @title  lurf: Find the Least Unfavourable Reduction Factors
+#' @description Tally the remainders upon division for \eqn{r \in [rmin,rmax]}, return a data.frame df sorted by best r. df has two columns, red and rem. red is the reduction factor and rem is the total of the remainders upon reduction by red.
+#' @param rmin  minimum reduction factor to calculate (default is 1)
+#' @param rmax  maximum reduction factor to calculate (default is 25)
+#' @param rstep step size between r values (default is 1)
+#' @param nit   count data
+#' @examples
+#' data <- c(215,309,116,157,213,248,112)
+#' # Suppose you want the reduction factor which loses the least information, but which is at least 10:
+#' lurf(data, rmin=10, plothist=TRUE) # the histogram shows patterns in changing r
+#' # examining the data.frame for smallest SS shows that 11 and 14 will give better results than 10.
+#'
+#' # we can compare the reduced counts from these three options (r=10,11,14) to the original data:
+#' data
+#' 10*reduction(data, red = 10)
+#' 11*reduction(data, red = 11)
+#' 14*reduction(data, red = 14)
+#' # this makes it clear why 11 and 14 are better choices of r than 10 for this data (even though they are larger reductions!)
+#' @export
+lurf <- function(nit, rmin=1, rmax=25, rstep=1, plothist=FALSE) {
+  redseq <- seq(rmin,rmax,1)
+  remseq <- sapply(X = redseq, FUN = function(X, nit) {
+    sum(nit%%X)
+  }, nit=nit)
+  SSseq <- sapply(X = redseq, FUN = function(X, nit) {
+    sum((nit%%X)^2)
+  }, nit=nit)
+  df <- data.frame(red=redseq[order(SSseq)], rem=remseq[order(SSseq)], SS=sqrt(SSseq)[order(SSseq)])
+  if(plothist) {
+    plot(y=df$rem, x=df$red)
+  }
+  return(df)
+}
+
 #' Recommend a reduction value \eqn{r} based on maximum threshold on increased variance.
 #'
 #' @param nit Full counts.
@@ -152,7 +203,7 @@ drbinom <- compiler::cmpfun(drbinom_)
 
 
 
-#' internal function, needs to be vectorized
+#' internal function
 drpois_1_  <- function(x, lambda, red, log=FALSE) {
   start <- x*red-red/2
   end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
@@ -181,7 +232,7 @@ drpois_1 <- compiler::cmpfun(drpois_1_)
 #' Y <- drpois(seq(1,20,1), 55, 10)
 #' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
-drpois <- drpois_
+drpois <- drpois_1
 
 
 
