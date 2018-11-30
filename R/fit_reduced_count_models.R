@@ -249,6 +249,7 @@ red_Like_closed_ <- function(par, nit, l_s_c, K, red, FUN=round, VERBOSE=FALSE, 
     B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) {
       par[X]
     }, par=par)
+    pdet <- plogis(par[length(B_l)+1])
   }
 
   Y    <- nit
@@ -331,8 +332,9 @@ red_Like_closed_ <- function(par, nit, l_s_c, K, red, FUN=round, VERBOSE=FALSE, 
 }
 
 #' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par Vector with two elements, log(lambda) and logis(pdet).
+#' @param par Vector with two elements, log(lambda) and logis(pdet). If l_s_c is not NULL, need length(par) = length(l_s_c) + 2, for the B0...BK coefficients of lambda (B0 is the constant term coefficient).
 #' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param l_s_c list of lambda site covariates (list of vectors of length R (number of sites)),
 #' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
