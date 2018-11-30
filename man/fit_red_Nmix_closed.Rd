@@ -4,11 +4,14 @@
 \alias{fit_red_Nmix_closed}
 \title{Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.}
 \usage{
-fit_red_Nmix_closed(nit, red, K, starts = c(1, 0), VERBOSE = FALSE,
-  PARALLELIZE = FALSE, method = "BFGS", ...)
+fit_red_Nmix_closed(nit, lambda_site_covariates = NULL, red, K,
+  starts = c(1, 0), VERBOSE = FALSE, PARALLELIZE = FALSE,
+  method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
+
+\item{lambda_site_covariates}{Either NULL (no lambda site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(lambda_it) = B0 + B1 \* V1_i + B2 \* V2_i + ...}
 
 \item{red}{reduction factor, either a number, or a vector of reduction factors (R sites reductions).}
 

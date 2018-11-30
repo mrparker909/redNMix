@@ -236,52 +236,100 @@ drpois <- drpois_1
 
 
 
-red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_closed_ <- function(par, nit, l_s_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- length(unique(nit$time))
   R <- length(unique(nit$site))
 
   pdet <- plogis(par[2])
   lamb <- exp(par[1])
+
+  B_l <- 1 # covariate coefficients for lambda
+  if(!is.null(l_s_c)) {
+    lamb <- do.call(cbind, l_s_c)
+    B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) {
+      par[X]
+    }, par=par)
+  }
+
   Y    <- nit
   Y_df <- nit
 
   # TODO: can this be made more efficient using matrix multiplications?
   l <- 0
-  if(PARALLELIZE) {
-   li <- foreach(i=1:R) %dopar% {
-     Yi_df <- Y_df[which(Y_df$site==i),]
-     li <- 0
-     ni <- max(Yi_df$count)
+  if(is.null(l_s_c)) {
+    if(PARALLELIZE) {
+     li <- foreach(i=1:R) %dopar% {
+       Yi_df <- Y_df[which(Y_df$site==i),]
+       li <- 0
+       ni <- max(Yi_df$count)
 
-     for(Ni in ni:K[i,1]) {
-       lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
+       for(Ni in ni:K[i,1]) {
+         lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
 
-       lit_ <- prod(lit)
-       li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
-     }
-     return(log(li))
-    }
-    l <- sum(unlist(li))
-    ###
-  } else {
-
-    for(i in 1:R) {
-      Yi_df <- Y_df[which(Y_df$site==i),]
-      li <- 0
-      ni <- max(Yi_df$count)
-
-      for(Ni in ni:K[i,1]) {
-        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
-
-        lit_ <- prod(lit)
-        li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
+         lit_ <- prod(lit)
+         li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
+       }
+       return(log(li))
       }
-      l <- l+log(li)
+      l <- sum(unlist(li))
+      ###
+    } else {
+
+      for(i in 1:R) {
+        Yi_df <- Y_df[which(Y_df$site==i),]
+        li <- 0
+        ni <- max(Yi_df$count)
+
+        for(Ni in ni:K[i,1]) {
+          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
+
+          lit_ <- prod(lit)
+          li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
+        }
+        l <- l+log(li)
+      }
+    }
+  } else { # here we have site covariates for lambda: l_s_c
+    if(PARALLELIZE) {
+      li <- foreach(i=1:R) %dopar% {
+        Yi_df <- Y_df[which(Y_df$site==i),]
+        li <- 0
+        ni <- max(Yi_df$count)
+
+        for(Ni in ni:K[i,1]) {
+          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
+
+          lit_ <- prod(lit)
+
+          li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + lamb[i,] * B_l[-1]), red=red[i,1])
+        }
+        return(log(li))
+      }
+      l <- sum(unlist(li))
+      ###
+    } else {
+
+      for(i in 1:R) {
+        Yi_df <- Y_df[which(Y_df$site==i),]
+        li <- 0
+        ni <- max(Yi_df$count)
+
+        for(Ni in ni:K[i,1]) {
+          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
+          ####
+          print(exp(lamb[i,] * B_l))
+          ####
+          lit_ <- prod(lit)
+          li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + lamb[i,] * B_l[-1]), red=red[i,1])
+        }
+        l <- l+log(li)
+      }
     }
   }
   if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
 }
+
 #' Internal function. Used to calculate the negative of the log likelihood.
 #' @param par Vector with two elements, log(lambda) and logis(pdet).
 #' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
@@ -452,6 +500,7 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
 #' @param starts Vector of starting values for optimize. Has two elements, log(lambda) and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param lambda_site_covariates Either NULL (no lambda site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(lambda_it) = B0 + B1 \* V1_i + B2 \* V2_i + ...
 #' @param K      Upper bound on summations, either a single number, or a vector of K values, one for each site (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).
 #' @param red    reduction factor, either a number, or a vector of reduction factors (R sites reductions).
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
@@ -463,11 +512,20 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' out2 <- fit_red_Nmix_closed(Y$nit, red=c(10,10,10,10,20,20,40,40), K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
-fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
 
   Y_m <- nit
   row.names(Y_m) <- 1:nrow(nit)
   colnames(Y_m) <- 1:ncol(nit)
+
+  if(!is.null(lambda_site_covariates)) {
+    if(!is.list(lambda_site_covariates)) {stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+    if(any( !unlist(lapply(X = lambda_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+      stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+    }
+
+    if(identical(starts,c(1,0))) starts <- c(rep(1, times=length(lambda_site_covariates)), starts)
+  }
 
   Y_df <- reshape2::melt(Y_m)
   colnames(Y_df) <- c("site", "time", "count")
@@ -495,6 +553,7 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, PARAL
   opt <- optim(par      = starts,
                 fn      = red_Like_closed,
                 nit     = Y_df,
+                l_s_c   = lambda_site_covariates,
                 K       = red_K,
                 red     = red,
                 VERBOSE = VERBOSE,
