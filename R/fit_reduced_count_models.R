@@ -245,8 +245,8 @@ red_Like_closed_ <- function(par, nit, l_s_c, K, red, FUN=round, VERBOSE=FALSE, 
 
   B_l <- 1 # covariate coefficients for lambda
   if(!is.null(l_s_c)) {
-    lamb <- do.call(cbind, l_s_c)
-    B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) {
+    lamb <- do.call(cbind, l_s_c) # rows are sites, cols are covariate values
+    B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
       par[X]
     }, par=par)
     pdet <- plogis(par[length(B_l)+1])
@@ -302,7 +302,7 @@ red_Like_closed_ <- function(par, nit, l_s_c, K, red, FUN=round, VERBOSE=FALSE, 
 
           lit_ <- prod(lit)
 
-          li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + lamb[i,] * B_l[-1]), red=red[i,1])
+          li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + sum(B_l[-1]*lamb[i,])), red=red[i,1])
         }
         return(log(li))
       }
@@ -317,11 +317,9 @@ red_Like_closed_ <- function(par, nit, l_s_c, K, red, FUN=round, VERBOSE=FALSE, 
 
         for(Ni in ni:K[i,1]) {
           lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
-          ####
-          print(exp(lamb[i,] * B_l))
-          ####
+
           lit_ <- prod(lit)
-          li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + lamb[i,] * B_l[-1]), red=red[i,1])
+          li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + sum(B_l[-1]*lamb[i,])), red=red[i,1])
         }
         l <- l+log(li)
       }
