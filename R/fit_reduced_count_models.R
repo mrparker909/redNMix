@@ -240,91 +240,59 @@ red_Like_closed_ <- function(par, nit, l_s_c, K, red, FUN=round, VERBOSE=FALSE, 
   T <- length(unique(nit$time))
   R <- length(unique(nit$site))
 
-  pdet <- plogis(par[2])
-  lamb <- exp(par[1])
-
-  B_l <- 1 # covariate coefficients for lambda
+  # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
+  lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+  B_l <- par[1] # covariates for lambda
   if(!is.null(l_s_c)) {
-    lamb <- do.call(cbind, l_s_c) # rows are sites, cols are covariate values
+    lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
     B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
       par[X]
     }, par=par)
-    pdet <- plogis(par[length(B_l)+1])
   }
+
+  # extract detection estimates from par
+  pdet <- plogis(par[length(B_l)+1])
 
   Y    <- nit
   Y_df <- nit
 
-  # TODO: can this be made more efficient using matrix multiplications?
   l <- 0
-  if(is.null(l_s_c)) {
-    if(PARALLELIZE) {
-     li <- foreach(i=1:R) %dopar% {
-       Yi_df <- Y_df[which(Y_df$site==i),]
-       li <- 0
-       ni <- max(Yi_df$count)
 
-       for(Ni in ni:K[i,1]) {
-         lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
 
-         lit_ <- prod(lit)
-         li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
-       }
-       return(log(li))
+  if(PARALLELIZE) {
+    li <- foreach(i=1:R) %dopar% {
+      Yi_df <- Y_df[which(Y_df$site==i),]
+      li <- 0
+      ni <- max(Yi_df$count)
+
+      for(Ni in ni:K[i,1]) {
+        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
+
+        lit_ <- prod(lit)
+
+        li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
       }
-      l <- sum(unlist(li))
-      ###
-    } else {
-
-      for(i in 1:R) {
-        Yi_df <- Y_df[which(Y_df$site==i),]
-        li <- 0
-        ni <- max(Yi_df$count)
-
-        for(Ni in ni:K[i,1]) {
-          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
-
-          lit_ <- prod(lit)
-          li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
-        }
-        l <- l+log(li)
-      }
+      return(log(li))
     }
-  } else { # here we have site covariates for lambda: l_s_c
-    if(PARALLELIZE) {
-      li <- foreach(i=1:R) %dopar% {
-        Yi_df <- Y_df[which(Y_df$site==i),]
-        li <- 0
-        ni <- max(Yi_df$count)
+    l <- sum(unlist(li))
+    ###
+  } else {
 
-        for(Ni in ni:K[i,1]) {
-          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
+    for(i in 1:R) {
+      Yi_df <- Y_df[which(Y_df$site==i),]
+      li <- 0
+      ni <- max(Yi_df$count)
 
-          lit_ <- prod(lit)
+      for(Ni in ni:K[i,1]) {
+        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
 
-          li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + sum(B_l[-1]*lamb[i,])), red=red[i,1])
-        }
-        return(log(li))
+        lit_ <- prod(lit)
+        li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + sum(B_l[-1]*lamb[i,])), red=red[i,1])
       }
-      l <- sum(unlist(li))
-      ###
-    } else {
-
-      for(i in 1:R) {
-        Yi_df <- Y_df[which(Y_df$site==i),]
-        li <- 0
-        ni <- max(Yi_df$count)
-
-        for(Ni in ni:K[i,1]) {
-          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
-
-          lit_ <- prod(lit)
-          li <- li + lit_*drpois(x = Ni, lambda = exp(B_l[1] + sum(B_l[-1]*lamb[i,])), red=red[i,1])
-        }
-        l <- l+log(li)
-      }
+      l <- l+log(li)
     }
   }
+
   if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
 }
