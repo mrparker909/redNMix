@@ -17,7 +17,11 @@ mcd <- function(nit, howmany=10) {
 }
 
 #' @title  lurf: Find the Least Unfavourable Reduction Factors
-#' @description Tally the remainders upon division for \eqn{r \in [rmin,rmax]}, return a data.frame df sorted by best r. df has two columns, red and rem. red is the reduction factor and rem is the total of the remainders upon reduction by red.
+#' @description Tally the remainders upon division for \eqn{r \in [rmin,rmax]}, return a data.frame df
+#' sorted by best r (smallest sum of remainders after). df has three
+#' columns, red, rem, and ss. red is the reduction factor and rem is the sum of the remainders upon
+#' reduction by red. ss is the absolute change in standard deviation of the reduced counts
+#' abs(full counts std dev - r* reduced counts std dev).
 #' @param rmin  minimum reduction factor to calculate (default is 1)
 #' @param rmax  maximum reduction factor to calculate (default is 25)
 #' @param rstep step size between r values (default is 1)
@@ -25,7 +29,7 @@ mcd <- function(nit, howmany=10) {
 #' @examples
 #' data <- c(215,309,116,157,213,248,112)
 #' # Suppose you want the reduction factor which loses the least information, but which is at least 10:
-#' lurf(data, rmin=10, plothist=TRUE) # the histogram shows patterns in changing r
+#' lurf(data, rmin=10, plot=TRUE) # the plot shows patterns in changing r
 #' # examining the data.frame for smallest SS shows that 11 and 14 will give better results than 10.
 #'
 #' # we can compare the reduced counts from these three options (r=10,11,14) to the original data:
@@ -35,16 +39,16 @@ mcd <- function(nit, howmany=10) {
 #' 14*reduction(data, red = 14)
 #' # this makes it clear why 11 and 14 are better choices of r than 10 for this data (even though they are larger reductions!)
 #' @export
-lurf <- function(nit, rmin=1, rmax=25, rstep=1, plothist=FALSE) {
+lurf <- function(nit, rmin=1, rmax=25, rstep=1, plot=FALSE) {
   redseq <- seq(rmin,rmax,1)
   remseq <- sapply(X = redseq, FUN = function(X, nit) {
     sum(nit%%X)
   }, nit=nit)
   SSseq <- sapply(X = redseq, FUN = function(X, nit) {
-    sum((nit%%X)^2)
+    abs(sqrt(var(X*(reduction(nit,red = X)))) - sqrt(var(nit)))
   }, nit=nit)
-  df <- data.frame(red=redseq[order(SSseq)], rem=remseq[order(SSseq)], SS=sqrt(SSseq)[order(SSseq)])
-  if(plothist) {
+  df <- data.frame(red=redseq[order(remseq)], rem=remseq[order(remseq)], SS=SSseq[order(remseq)])
+  if(plot) {
     plot(y=df$rem, x=df$red)
   }
   return(df)
@@ -125,8 +129,8 @@ round2 <- compiler::cmpfun(round2_)
 #' @param num_times The number of sampling occasions.
 #' @param lambda    The population rate parameter (\eqn{N_i \sim Poisson(\lambda)}).
 #' @param pdet      The probability of detection \eqn{p} (\eqn{n_{it} \sim Binomial(N_i,p)}).
-#' @param omega     The probability of survival (\eqn{S_{it} \sim Binomial(N_{it}, \omega)}).
-#' @param gamma     The recruitment rate parameter (\eqn{G_{it} \sim Poisson(\gamma)}).
+#' @param omega     The probability of survival (\eqn{S_{it} \sim Binomial(N_{it}, \omega)}). Either a single number, or a vector of length t-1 (omega for each sampling occassion after the first).
+#' @param gamma     The recruitment rate parameter (\eqn{G_{it} \sim Poisson(\gamma)}). Either a single number, or a vector of length t-1 (gamma for each sampling occassion after the first).
 #' @return A list object with two named matrices. Nit contains the total population per site
 #'         (each row represents a site, each column a sampling occasion). nit contains the observed
 #'         counts (rows=sites, columns=sampling occasions).
@@ -143,13 +147,13 @@ gen_Nmix_open <- function(num_sites,num_times,lambda,pdet,omega,gamma) {
   U    = num_sites
   T    = num_times
   lamb = lambda
-  gamm = gamma
-  omeg = omega
+  gamm = if(length(gamma)==1) {gamm<-rep(gamma, times=T-1) } else { gamm<-gamma }
+  omeg = if(length(omega)==1) {omeg<-rep(omega, times=T-1) } else { gamm<-gamma }
 
   Ntemp <- c(rep(rpois(n=U,lambda = lamb),times=T))
   Ni <- matrix(data=Ntemp, nrow = U, ncol = T)
   for(i in 2:T) {
-    Ni[,i] <- rbinom(n = U, size = Ni[,i-1], prob = omeg) + rpois(n = U, lambda = gamm)
+    Ni[,i] <- rbinom(n = U, size = Ni[,i-1], prob = omeg[i-1]) + rpois(n = U, lambda = gamm[i-1])
   }
 
   nit <- Ni
@@ -316,7 +320,7 @@ red_Like_closed <- compiler::cmpfun(red_Like_closed_)
 
 
 
-red_Like_open_ <- function(par, nit, l_s_c, g_s_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
@@ -333,7 +337,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, K, red, FUN=round, VERBOSE=FA
 
 
   # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
-  gamm <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for gamma
+  gamm <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for gamma
   B_g <- par[length(B_l)+1] # covariates for lambda
   if(!is.null(g_s_c)) {
     gamm <- cbind(gamm, do.call(cbind, g_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
@@ -343,12 +347,24 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, K, red, FUN=round, VERBOSE=FA
     }, par=par)
   }
 
+  # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
+  gamt <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for gamma
+  B_gt <- NULL # covariates for lambda
+  if(!is.null(g_t_c)) {
+    gamt <- do.call(cbind, g_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+
+    B_gt <- sapply(X = 1:length(g_t_c), FUN = function(X,par) { # one coeff per covariate
+      par[length(B_l)+length(B_g)+X]
+    }, par=par)
+  }
+
   #lamb <- exp(par[1])
   #gamm <- exp(par[length(B_l)+1])
-  omeg <- plogis(par[length(B_l)+length(B_g)+1])
-  pdet <- plogis(par[length(B_l)+length(B_g)+2])
+  omeg <- plogis(par[length(B_l)+length(B_g)+length(B_gt)+1])
+  pdet <- plogis(par[length(B_l)+length(B_g)+length(B_gt)+2])
 
   Y <- nit
+
 
   # g1_t_star[k] holds g1[k] * g_star[k]
   # allocate memory for vectors
@@ -370,8 +386,8 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, K, red, FUN=round, VERBOSE=FA
   g2        <- list()
   g_star    <- list()
 
-  g3 <- list()
-
+  g3        <- vector(length = R, mode = "list")#list()
+  g3_temp   <- list()
   # if(var(as.vector(red))==0) { # all reduction factors are the same
   #   tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
   #   if(length(B_g == 1)) { # save computation time when gamm and red are the same across sites
@@ -386,18 +402,36 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, K, red, FUN=round, VERBOSE=FA
   #   }
   # } else {
     if(PARALLELIZE) {
-      g3 <- foreach(i=1:R, .packages = c("redNMix","foreach")) %dopar% {
-        tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-        tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, red = red[i,1], PARALLELIZE=TRUE)
-      }
       # for(i in 1:R) {
       #   tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
       #   g3[[i]]        <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=PARALLELIZE)
       # }
+      if(!is.null(g_t_c)) {
+        g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach")) %:%
+          foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
+            tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+            tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+          }
+        for(i in 1:R) {
+          g3[[i]]<- g3_temp[[i]]
+        }
+      } else {
+        g3_temp <- foreach(i=1:R, .packages=c("redNMix","foreach")) %dopar% {
+          tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+          tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
+        }
+        for(i in 1:R) {
+          for(t in 1:T) {
+            g3[[i]][[t]] <- g3_temp[[i]]
+          }
+        }
+      }
     } else {
       for(i in 1:R) {
-        tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-        g3[[i]]        <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g, red = red[i,1], PARALLELIZE=PARALLELIZE)
+        for(t in 1:T) {
+          tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+          g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g, gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
+        }
       }
     }
   #}
@@ -410,7 +444,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, K, red, FUN=round, VERBOSE=FA
     g_star[[i]]    <- rep(1, times=K[i]+1)
   }
 
-  # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
+  # apply over sites (1 to R), TODO: this is a prime candidate for parallel since each site i is independent
   ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
     g3        <- g3[[i]]
     g1_t_star <- g1_t_star[[i]]
@@ -420,6 +454,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, K, red, FUN=round, VERBOSE=FA
     g_star    <- g_star[[i]]
     K         <- K[i]
 
+
     # loop backwards over times t, stopping at t==2
     for(t in T:2) {
       # size takes possible value of N (0 to K) at time t (for t > 1)
@@ -427,12 +462,13 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, K, red, FUN=round, VERBOSE=FA
       g1_t_star <- g1_t * g_star
 
       # update g_star
-      g_star = g3 %*% g1_t_star
+      g_star = g3[[t]] %*% g1_t_star
     }
 
     # size takes possible values of N (0 to K) at time t==1
     g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red[i,1])
     g2 <- drpois(x = 0:K, lambda = exp(sum(lamb[i,] * B_l)), red = red[i,1])
+
 
     # apply recursive definition of likelihood
     return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
@@ -486,14 +522,14 @@ tp_jk_V <- compiler::cmpfun(tp_jk_V_)
 
 
 #' Internal function, calculates transition probability matrix (transition from row pop to column pop)
-tp_MAT_ <- function(M, omeg, gamm, B_g, red, PARALLELIZE=FALSE) {
+tp_MAT_ <- function(M, omeg, gamm, B_g, gamt, B_gt, red, PARALLELIZE=FALSE) {
   K1 <- 1:(nrow(M))
   if(PARALLELIZE) {
     M <- foreach(a = K1-1, .combine = rbind) %dopar% {
-        tp_jk_V(j_vec = a, k_vec = 1:nrow(M)-1, omeg = omeg, gamm = exp(sum(B_g*gamm)), red = red)
+        tp_jk_V(j_vec = a, k_vec = 1:nrow(M)-1, omeg = omeg, gamm = exp(sum(B_g*gamm)+sum(B_gt*gamt)), red = red)
     }
   } else {
-    M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V, omeg, gamm = exp(sum(B_g*gamm)), red)
+    M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V, omeg, gamm = exp(sum(B_g*gamm)+sum(B_gt*gamt)), red)
   }
   return(M)
 }
@@ -609,7 +645,7 @@ END_PARALLEL <- function() {
 #' out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
-fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, gamma_time_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
    if(length(red)==1) {
      red <- rep(red, times=nrow(nit))
    }
@@ -639,15 +675,27 @@ fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covar
      gamm_starts <- rep(1, times=length(gamma_site_covariates)+1)
    }
 
+   if(!is.null(gamma_time_covariates)) {
+     if(!is.list(gamma_time_covariates)) {stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions).")}
+     if(any( !unlist(lapply(X = gamma_time_covariates, FUN = function(X) {is.vector(X) && length(X)==ncol(nit)})) )) {
+       stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions).")
+     }
+     # update default starting values
+     gamm_starts <- c(gamm_starts, rep(1, times=length(gamma_time_covariates)))
+   }
+
+
    if(is.null(starts)) {
      starts <- c(lamb_starts, gamm_starts, omeg_starts, pdet_starts)
    }
+
 
    opt <- optim(par     = starts,
                 fn      = red_Like_open,
                 nit     = reduction(x = nit, red = red),
                 l_s_c   = lambda_site_covariates,
                 g_s_c   = gamma_site_covariates,
+                g_t_c   = gamma_time_covariates,
                 K       = red_K,
                 red     = red,
                 VERBOSE = VERBOSE,
