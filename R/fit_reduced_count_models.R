@@ -17,7 +17,12 @@ mcd <- function(nit, howmany=10) {
 }
 
 #' @title  lurf: Find the Least Unfavourable Reduction Factors
-#' @description Tally the remainders upon division for \eqn{r \in [rmin,rmax]}, return a data.frame df sorted by best r. df has two columns, red and rem. red is the reduction factor and rem is the total of the remainders upon reduction by red.
+#' @description Tally the remainders upon division for \eqn{r \in [rmin,rmax]}, return a data.frame df
+#' sorted by best r (smallest sum of remainders after division by r). df has three
+#' columns, red, rem, and ss. red is the reduction factor and rem is the sum of the remainders upon
+#' reduction by red. ss is the absolute change in standard deviation of the reduced counts compared
+#' with the full counts (abs(r*ss_red-ss_full)).
+#' abs(full counts std dev - r* reduced counts std dev).
 #' @param rmin  minimum reduction factor to calculate (default is 1)
 #' @param rmax  maximum reduction factor to calculate (default is 25)
 #' @param rstep step size between r values (default is 1)
@@ -25,7 +30,7 @@ mcd <- function(nit, howmany=10) {
 #' @examples
 #' data <- c(215,309,116,157,213,248,112)
 #' # Suppose you want the reduction factor which loses the least information, but which is at least 10:
-#' lurf(data, rmin=10, plothist=TRUE) # the histogram shows patterns in changing r
+#' lurf(data, rmin=10, plot=TRUE) # the plot shows patterns in changing r
 #' # examining the data.frame for smallest SS shows that 11 and 14 will give better results than 10.
 #'
 #' # we can compare the reduced counts from these three options (r=10,11,14) to the original data:
@@ -35,16 +40,16 @@ mcd <- function(nit, howmany=10) {
 #' 14*reduction(data, red = 14)
 #' # this makes it clear why 11 and 14 are better choices of r than 10 for this data (even though they are larger reductions!)
 #' @export
-lurf <- function(nit, rmin=1, rmax=25, rstep=1, plothist=FALSE) {
+lurf <- function(nit, rmin=1, rmax=25, rstep=1, plot=FALSE) {
   redseq <- seq(rmin,rmax,1)
   remseq <- sapply(X = redseq, FUN = function(X, nit) {
     sum(nit%%X)
   }, nit=nit)
   SSseq <- sapply(X = redseq, FUN = function(X, nit) {
-    sum((nit%%X)^2)
+    abs(sqrt(var(X*(reduction(nit,red = X)))) - sqrt(var(nit)))
   }, nit=nit)
-  df <- data.frame(red=redseq[order(SSseq)], rem=remseq[order(SSseq)], SS=sqrt(SSseq)[order(SSseq)])
-  if(plothist) {
+  df <- data.frame(red=redseq[order(remseq)], rem=remseq[order(remseq)], SS=SSseq[order(remseq)])
+  if(plot) {
     plot(y=df$rem, x=df$red)
   }
   return(df)
@@ -125,8 +130,8 @@ round2 <- compiler::cmpfun(round2_)
 #' @param num_times The number of sampling occasions.
 #' @param lambda    The population rate parameter (\eqn{N_i \sim Poisson(\lambda)}).
 #' @param pdet      The probability of detection \eqn{p} (\eqn{n_{it} \sim Binomial(N_i,p)}).
-#' @param omega     The probability of survival (\eqn{S_{it} \sim Binomial(N_{it}, \omega)}).
-#' @param gamma     The recruitment rate parameter (\eqn{G_{it} \sim Poisson(\gamma)}).
+#' @param omega     The probability of survival (\eqn{S_{it} \sim Binomial(N_{it}, \omega)}). Either a single number, or a vector of length t-1 (omega for each sampling occassion after the first).
+#' @param gamma     The recruitment rate parameter (\eqn{G_{it} \sim Poisson(\gamma)}). Either a single number, or a vector of length t-1 (gamma for each sampling occassion after the first).
 #' @return A list object with two named matrices. Nit contains the total population per site
 #'         (each row represents a site, each column a sampling occasion). nit contains the observed
 #'         counts (rows=sites, columns=sampling occasions).
@@ -143,13 +148,13 @@ gen_Nmix_open <- function(num_sites,num_times,lambda,pdet,omega,gamma) {
   U    = num_sites
   T    = num_times
   lamb = lambda
-  gamm = gamma
-  omeg = omega
+  gamm = if(length(gamma)==1) {gamm<-rep(gamma, times=T-1) } else { gamm<-gamma }
+  omeg = if(length(omega)==1) {omeg<-rep(omega, times=T-1) } else { gamm<-gamma }
 
   Ntemp <- c(rep(rpois(n=U,lambda = lamb),times=T))
   Ni <- matrix(data=Ntemp, nrow = U, ncol = T)
   for(i in 2:T) {
-    Ni[,i] <- rbinom(n = U, size = Ni[,i-1], prob = omeg) + rpois(n = U, lambda = gamm)
+    Ni[,i] <- rbinom(n = U, size = Ni[,i-1], prob = omeg[i-1]) + rpois(n = U, lambda = gamm[i-1])
   }
 
   nit <- Ni
@@ -236,30 +241,48 @@ drpois <- drpois_1
 
 
 
-red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- length(unique(nit$time))
   R <- length(unique(nit$site))
 
-  pdet <- plogis(par[2])
-  lamb <- exp(par[1])
+  # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
+  lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+  B_l <- par[1] # covariates for lambda
+  if(!is.null(l_s_c)) {
+    lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+    B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+      par[X]
+    }, par=par)
+  }
+
+  # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
+  pdet <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+  B_p <- par[length(B_l)+1] # covariates for pdet
+  if(!is.null(p_s_c)) {
+    pdet <- cbind(pdet, do.call(cbind, p_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+    B_p  <- sapply(X = 1:(length(p_s_c)+1)+length(B_l), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+      par[X]
+    }, par=par)
+  }
+
   Y    <- nit
   Y_df <- nit
 
-  # TODO: can this be made more efficient using matrix multiplications?
   l <- 0
   if(PARALLELIZE) {
-   li <- foreach(i=1:R) %dopar% {
-     Yi_df <- Y_df[which(Y_df$site==i),]
-     li <- 0
-     ni <- max(Yi_df$count)
+    li <- foreach(i=1:R) %dopar% {
+      Yi_df <- Y_df[which(Y_df$site==i),]
+      li <- 0
+      ni <- max(Yi_df$count)
 
-     for(Ni in ni:K[i,1]) {
-       lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
+      for(Ni in ni:K[i,1]) {
+        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
 
-       lit_ <- prod(lit)
-       li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
-     }
-     return(log(li))
+        lit_ <- prod(lit)
+
+        li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
+      }
+      return(log(li))
     }
     l <- sum(unlist(li))
     ###
@@ -271,20 +294,24 @@ red_Like_closed_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLE
       ni <- max(Yi_df$count)
 
       for(Ni in ni:K[i,1]) {
-        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = pdet, red=reduc))
+        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
 
         lit_ <- prod(lit)
-        li <- li + lit_*drpois(x = Ni, lambda = lamb, red=red[i,1])
+        li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
       }
       l <- l+log(li)
     }
   }
+
   if(VERBOSE) {print(paste0("log likelihood: ",l))}
   return(-1*l)
 }
+
 #' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par Vector with two elements, log(lambda) and logis(pdet).
+#' @param par Vector with two elements, log(lambda) and logis(pdet). If l_s_c is not NULL, need length(par) = length(l_s_c) + 2, for the B0...BK coefficients of lambda (B0 is the constant term coefficient).
 #' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param l_s_c list of lambda site covariates (list of vectors of length R (number of sites))
+#' @param p_s_c list of pdet site covariates (list of vectors of length R (number of sites))
 #' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
@@ -294,16 +321,52 @@ red_Like_closed <- compiler::cmpfun(red_Like_closed_)
 
 
 
-red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
-  pdet <- plogis(par[4])
-  lamb <- exp(par[1])
-  omeg <- plogis(par[3])
-  gamm <- exp(par[2])
+  # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
+  lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+  B_l <- par[1] # covariates for lambda
+  if(!is.null(l_s_c)) {
+    lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+
+    B_l <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+      par[X]
+    }, par=par)
+  }
+
+
+  # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
+  gamm <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for gamma
+  B_g <- par[length(B_l)+1] # covariates for lambda
+  if(!is.null(g_s_c)) {
+    gamm <- cbind(gamm, do.call(cbind, g_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+
+    B_g <- sapply(X = 1:(length(g_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+      par[length(B_l)+X]
+    }, par=par)
+  }
+
+  # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
+  gamt <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for gamma
+  B_gt <- NULL # covariates for lambda
+  if(!is.null(g_t_c)) {
+    gamt <- do.call(cbind, g_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+    #gamt <- rbind(gamt,rep(0, times=length(g_t_c)))
+
+    B_gt <- sapply(X = 1:length(g_t_c), FUN = function(X,par) { # one coeff per covariate
+      par[length(B_l)+length(B_g)+X]
+    }, par=par)
+  }
+
+  #lamb <- exp(par[1])
+  #gamm <- exp(par[length(B_l)+1])
+  omeg <- plogis(par[length(B_l)+length(B_g)+length(B_gt)+1])
+  pdet <- plogis(par[length(B_l)+length(B_g)+length(B_gt)+2])
 
   Y <- nit
+
 
   # g1_t_star[k] holds g1[k] * g_star[k]
   # allocate memory for vectors
@@ -325,32 +388,55 @@ red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELI
   g2        <- list()
   g_star    <- list()
 
-  g3 <- list()
-
-  if(var(as.vector(red))==0) {
-    tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-    g3[[1]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[1,1], PARALLELIZE=PARALLELIZE)
-    for(i in 1:R) {
-      g3[[i]] <- g3[[1]]
-    }
-  } else {
+  g3        <- vector(length = R, mode = "list")#list()
+  g3_temp   <- list()
+  # if(var(as.vector(red))==0) { # all reduction factors are the same
+  #   tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
+  #   if(length(B_g == 1)) { # save computation time when gamm and red are the same across sites
+  #     g <-tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[1,1], B_g=B_g, red = red[1,1], PARALLELIZE=PARALLELIZE)
+  #     for(i in 1:R) {
+  #       g3[[i]] <- g
+  #     }
+  #   } else {
+  #     for(i in 1:R) {
+  #       g3[[i]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, red = red[1,1], PARALLELIZE=PARALLELIZE)
+  #     }
+  #   }
+  # } else {
     if(PARALLELIZE) {
-      g3 <- foreach(i=1:R, .packages = c("redNMix","foreach")) %dopar% {
-        tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-        tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=TRUE)
-      }
       # for(i in 1:R) {
       #   tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
       #   g3[[i]]        <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=PARALLELIZE)
       # }
+      if(!is.null(g_t_c)) {
+        g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach")) %:%
+          foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
+            tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+            tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+          }
+        for(i in 1:R) {
+          g3[[i]]<- g3_temp[[i]]
+        }
+      } else {
+        g3_temp <- foreach(i=1:R, .packages=c("redNMix","foreach")) %dopar% {
+          tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+          tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
+        }
+        for(i in 1:R) {
+          for(t in 1:T) {
+            g3[[i]][[t]] <- g3_temp[[i]]
+          }
+        }
+      }
     } else {
       for(i in 1:R) {
-        tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-        g3[[i]]        <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=PARALLELIZE)
+        for(t in 1:T) {
+          tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+          g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g, gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
+        }
       }
     }
-
-  }
+  #}
 
   for(i in 1:R) {
     g1_t_star[[i]] <- rep(0, times=K[i]+1)
@@ -360,8 +446,8 @@ red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELI
     g_star[[i]]    <- rep(1, times=K[i]+1)
   }
 
-  # apply over sites (1 to R), this is a prime candidate for parallel processing! since each site i is independent
-  ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
+  # apply over sites (1 to R), TODO: this is a prime candidate for parallel since each site i is independent
+  ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
     g3        <- g3[[i]]
     g1_t_star <- g1_t_star[[i]]
     g1_t      <- g1_t[[i]]
@@ -370,6 +456,7 @@ red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELI
     g_star    <- g_star[[i]]
     K         <- K[i]
 
+
     # loop backwards over times t, stopping at t==2
     for(t in T:2) {
       # size takes possible value of N (0 to K) at time t (for t > 1)
@@ -377,16 +464,17 @@ red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELI
       g1_t_star <- g1_t * g_star
 
       # update g_star
-      g_star = g3 %*% g1_t_star
+      g_star = g3[[t]] %*% g1_t_star
     }
 
     # size takes possible values of N (0 to K) at time t==1
     g1 <- drbinom(x = Y[i,1], size = 0:K, prob = pdet, red = red[i,1])
-    g2 <- drpois(x = 0:K, lambda = lamb, red = red[i,1])
+    g2 <- drpois(x = 0:K, lambda = exp(sum(lamb[i,] * B_l)), red = red[i,1])
+
 
     # apply recursive definition of likelihood
     return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
-  }, FUN.VALUE = numeric(1), K=K, T=T, Y=Y, lamb=lamb, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
+  }, FUN.VALUE = numeric(1), K=K, T=T, Y=Y, lamb=lamb, B_l=B_l, pdet=pdet, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
 
   ll <- sum(unlist(ll_i))
   ###
@@ -394,9 +482,11 @@ red_Like_open_ <- function(par, nit, K, red, FUN=round, VERBOSE=FALSE, PARALLELI
   if(VERBOSE) { print(paste0("log likelihood: ",ll)) }
   return(-1*ll)
 }
+
 #' Internal function. Used to calculate the negative of the log likelihood.
 #' @param par     Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
 #' @param nit     R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param l_s_c   list of lambda site covariates (list of vectors of length R (number of sites)).
 #' @param K       Upper bound on summations (reduced counts upper bound).
 #' @param red     Reduction factor
 #' @param VERBOSE If true, prints the log likelihood to console.
@@ -435,14 +525,14 @@ tp_jk_V <- compiler::cmpfun(tp_jk_V_)
 
 
 #' Internal function, calculates transition probability matrix (transition from row pop to column pop)
-tp_MAT_ <- function(M, omeg, gamm, red, PARALLELIZE=FALSE) {
+tp_MAT_ <- function(M, omeg, gamm, B_g, gamt, B_gt, red, PARALLELIZE=FALSE) {
   K1 <- 1:(nrow(M))
   if(PARALLELIZE) {
     M <- foreach(a = K1-1, .combine = rbind) %dopar% {
-        tp_jk_V(j_vec = a, k_vec = 1:nrow(M)-1, omeg = omeg, gamm = gamm, red = red)
+        tp_jk_V(j_vec = a, k_vec = 1:nrow(M)-1, omeg = omeg, gamm = exp(sum(B_g*gamm)+sum(B_gt*gamt)), red = red)
     }
   } else {
-    M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V, omeg, gamm, red)
+    M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V, omeg, gamm = exp(sum(B_g*gamm)+sum(B_gt*gamt)), red)
   }
   return(M)
 }
@@ -452,6 +542,8 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
 #' @param starts Vector of starting values for optimize. Has two elements, log(lambda) and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param lambda_site_covariates Either NULL (no lambda site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(lambda_it) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
+#' @param pdet_site_covariates   Either NULL (no pdet site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be logit(lambda_it) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param K      Upper bound on summations, either a single number, or a vector of K values, one for each site (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).
 #' @param red    reduction factor, either a number, or a vector of reduction factors (R sites reductions).
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
@@ -463,11 +555,30 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' out2 <- fit_red_Nmix_closed(Y$nit, red=c(10,10,10,10,20,20,40,40), K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
-fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
 
   Y_m <- nit
   row.names(Y_m) <- 1:nrow(nit)
   colnames(Y_m) <- 1:ncol(nit)
+
+
+  if(!is.null(pdet_site_covariates)) {
+    if(!is.list(pdet_site_covariates)) {stop("invalid pdet_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+    if(any( !unlist(lapply(X = pdet_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+      stop("invalid pdet_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+    }
+    # update default starting values
+    if(identical(starts,c(1,0))) starts <- c(starts, rep(0, times=length(pdet_site_covariates)))
+  }
+
+  if(!is.null(lambda_site_covariates)) {
+    if(!is.list(lambda_site_covariates)) {stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+    if(any( !unlist(lapply(X = lambda_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+      stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+    }
+    # update default starting values
+    if(identical(starts,c(1,0))) starts <- c(rep(1, times=length(lambda_site_covariates)), starts)
+  }
 
   Y_df <- reshape2::melt(Y_m)
   colnames(Y_df) <- c("site", "time", "count")
@@ -495,6 +606,8 @@ fit_red_Nmix_closed <- function(nit, red, K, starts=c(1,0), VERBOSE=FALSE, PARAL
   opt <- optim(par      = starts,
                 fn      = red_Like_closed,
                 nit     = Y_df,
+                l_s_c   = lambda_site_covariates,
+                p_s_c   = pdet_site_covariates,
                 K       = red_K,
                 red     = red,
                 VERBOSE = VERBOSE,
@@ -521,8 +634,10 @@ END_PARALLEL <- function() {
 }
 
 #' Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.
-#' @param starts Vector with four elements, log(lambda), log(gamma), logit(omega), and logit(pdet).
+#' @param starts Vector with four elements (if no covariates), log(lambda), log(gamma), logit(omega), and logit(pdet). When there are X covariates B_x for a parameter, will need X+1 starting values for that parameter (+1 for the constant term B0).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
+#' @param lambda_site_covariates Either NULL (no lambda site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(lambda_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
+#' @param gamma_site_covariates  Either NULL (no gamma site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(gamma_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param K      Upper bound on summations.
 #' @param red    reduction factor, either a number or a vector of length R.
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
@@ -533,16 +648,57 @@ END_PARALLEL <- function() {
 #' out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
-fit_red_Nmix_open <- function(nit, red, K, starts=c(1,1,0,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, gamma_time_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
    if(length(red)==1) {
      red <- rep(red, times=nrow(nit))
    }
    red    <- matrix(red, nrow=nrow(nit), ncol=ncol(nit))
    red_K  <- reduction(x = matrix(K, nrow=nrow(red), ncol=ncol(red)), red = red)
 
-   opt <- optim(par      = starts,
+   lamb_starts <- c(1)
+   gamm_starts <- c(1)
+   omeg_starts <- c(0)
+   pdet_starts <- c(0)
+
+   if(!is.null(lambda_site_covariates)) {
+     if(!is.list(lambda_site_covariates)) {stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+     if(any( !unlist(lapply(X = lambda_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+       stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+     }
+     # update default starting values
+     lamb_starts <- rep(1, times=length(lambda_site_covariates)+1)
+   }
+
+   if(!is.null(gamma_site_covariates)) {
+     if(!is.list(gamma_site_covariates)) {stop("invalid gamma_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+     if(any( !unlist(lapply(X = gamma_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+       stop("invalid gamma_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+     }
+     # update default starting values
+     gamm_starts <- rep(1, times=length(gamma_site_covariates)+1)
+   }
+
+   if(!is.null(gamma_time_covariates)) {
+     if(!is.list(gamma_time_covariates)) {stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
+     if(any( !unlist(lapply(X = gamma_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
+       stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
+     }
+     # update default starting values
+     gamm_starts <- c(gamm_starts, rep(1, times=length(gamma_time_covariates)))
+   }
+
+
+   if(is.null(starts)) {
+     starts <- c(lamb_starts, gamm_starts, omeg_starts, pdet_starts)
+   }
+
+
+   opt <- optim(par     = starts,
                 fn      = red_Like_open,
                 nit     = reduction(x = nit, red = red),
+                l_s_c   = lambda_site_covariates,
+                g_s_c   = gamma_site_covariates,
+                g_t_c   = gamma_time_covariates,
                 K       = red_K,
                 red     = red,
                 VERBOSE = VERBOSE,

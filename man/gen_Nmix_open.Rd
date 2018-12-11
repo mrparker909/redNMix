@@ -15,9 +15,9 @@ gen_Nmix_open(num_sites, num_times, lambda, pdet, omega, gamma)
 
 \item{pdet}{The probability of detection \eqn{p} (\eqn{n_{it} \sim Binomial(N_i,p)}).}
 
-\item{omega}{The probability of survival (\eqn{S_{it} \sim Binomial(N_{it}, \omega)}).}
+\item{omega}{The probability of survival (\eqn{S_{it} \sim Binomial(N_{it}, \omega)}). Either a single number, or a vector of length t-1 (omega for each sampling occassion after the first).}
 
-\item{gamma}{The recruitment rate parameter (\eqn{G_{it} \sim Poisson(\gamma)}).}
+\item{gamma}{The recruitment rate parameter (\eqn{G_{it} \sim Poisson(\gamma)}). Either a single number, or a vector of length t-1 (gamma for each sampling occassion after the first).}
 }
 \value{
 A list object with two named matrices. Nit contains the total population per site

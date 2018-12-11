@@ -4,7 +4,7 @@
 \alias{lurf}
 \title{lurf: Find the Least Unfavourable Reduction Factors}
 \usage{
-lurf(nit, rmin = 1, rmax = 25, rstep = 1, plothist = FALSE)
+lurf(nit, rmin = 1, rmax = 25, rstep = 1, plot = FALSE)
 }
 \arguments{
 \item{nit}{count data}
@@ -16,12 +16,17 @@ lurf(nit, rmin = 1, rmax = 25, rstep = 1, plothist = FALSE)
 \item{rstep}{step size between r values (default is 1)}
 }
 \description{
-Tally the remainders upon division for \eqn{r \in [rmin,rmax]}, return a data.frame df sorted by best r. df has two columns, red and rem. red is the reduction factor and rem is the total of the remainders upon reduction by red.
+Tally the remainders upon division for \eqn{r \in [rmin,rmax]}, return a data.frame df
+sorted by best r (smallest sum of remainders after division by r). df has three
+columns, red, rem, and ss. red is the reduction factor and rem is the sum of the remainders upon
+reduction by red. ss is the absolute change in standard deviation of the reduced counts compared
+with the full counts (abs(r*ss_red-ss_full)).
+abs(full counts std dev - r* reduced counts std dev).
 }
 \examples{
 data <- c(215,309,116,157,213,248,112)
 # Suppose you want the reduction factor which loses the least information, but which is at least 10:
-lurf(data, rmin=10, plothist=TRUE) # the histogram shows patterns in changing r
+lurf(data, rmin=10, plot=TRUE) # the plot shows patterns in changing r
 # examining the data.frame for smallest SS shows that 11 and 14 will give better results than 10.
 
 # we can compare the reduced counts from these three options (r=10,11,14) to the original data:

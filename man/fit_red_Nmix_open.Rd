@@ -4,17 +4,23 @@
 \alias{fit_red_Nmix_open}
 \title{Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.}
 \usage{
-fit_red_Nmix_open(nit, red, K, starts = c(1, 1, 0, 0), VERBOSE = FALSE,
-  PARALLELIZE = FALSE, method = "BFGS", ...)
+fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
+  gamma_site_covariates = NULL, gamma_time_covariates = NULL, red, K,
+  starts = NULL, VERBOSE = FALSE, PARALLELIZE = FALSE,
+  method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
+
+\item{lambda_site_covariates}{Either NULL (no lambda site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(lambda_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
+
+\item{gamma_site_covariates}{Either NULL (no gamma site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(gamma_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
 
 \item{red}{reduction factor, either a number or a vector of length R.}
 
 \item{K}{Upper bound on summations.}
 
-\item{starts}{Vector with four elements, log(lambda), log(gamma), logit(omega), and logit(pdet).}
+\item{starts}{Vector with four elements (if no covariates), log(lambda), log(gamma), logit(omega), and logit(pdet). When there are X covariates B_x for a parameter, will need X+1 starting values for that parameter (+1 for the constant term B0).}
 
 \item{VERBOSE}{If true, prints the log likelihood to console at each optim iteration.}
 

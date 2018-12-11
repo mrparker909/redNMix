@@ -4,13 +4,17 @@
 \alias{red_Like_closed}
 \title{Internal function. Used to calculate the negative of the log likelihood.}
 \usage{
-red_Like_closed(par, nit, K, red, FUN = round, VERBOSE = FALSE,
-  PARALLELIZE = FALSE)
+red_Like_closed(par, nit, l_s_c, p_s_c, K, red, FUN = round,
+  VERBOSE = FALSE, PARALLELIZE = FALSE)
 }
 \arguments{
-\item{par}{Vector with two elements, log(lambda) and logis(pdet).}
+\item{par}{Vector with two elements, log(lambda) and logis(pdet). If l_s_c is not NULL, need length(par) = length(l_s_c) + 2, for the B0...BK coefficients of lambda (B0 is the constant term coefficient).}
 
 \item{nit}{data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
+
+\item{l_s_c}{list of lambda site covariates (list of vectors of length R (number of sites))}
+
+\item{p_s_c}{list of pdet site covariates (list of vectors of length R (number of sites))}
 
 \item{K}{Upper bound on summations (input reduced count upper bound).}
 
