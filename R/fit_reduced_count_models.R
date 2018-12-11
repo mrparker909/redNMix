@@ -18,9 +18,10 @@ mcd <- function(nit, howmany=10) {
 
 #' @title  lurf: Find the Least Unfavourable Reduction Factors
 #' @description Tally the remainders upon division for \eqn{r \in [rmin,rmax]}, return a data.frame df
-#' sorted by best r (smallest sum of remainders after). df has three
+#' sorted by best r (smallest sum of remainders after division by r). df has three
 #' columns, red, rem, and ss. red is the reduction factor and rem is the sum of the remainders upon
-#' reduction by red. ss is the absolute change in standard deviation of the reduced counts
+#' reduction by red. ss is the absolute change in standard deviation of the reduced counts compared
+#' with the full counts (abs(r*ss_red-ss_full)).
 #' abs(full counts std dev - r* reduced counts std dev).
 #' @param rmin  minimum reduction factor to calculate (default is 1)
 #' @param rmax  maximum reduction factor to calculate (default is 25)
@@ -352,6 +353,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, FUN=round, VER
   B_gt <- NULL # covariates for lambda
   if(!is.null(g_t_c)) {
     gamt <- do.call(cbind, g_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+    #gamt <- rbind(gamt,rep(0, times=length(g_t_c)))
 
     B_gt <- sapply(X = 1:length(g_t_c), FUN = function(X,par) { # one coeff per covariate
       par[length(B_l)+length(B_g)+X]
@@ -480,6 +482,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, FUN=round, VER
   if(VERBOSE) { print(paste0("log likelihood: ",ll)) }
   return(-1*ll)
 }
+
 #' Internal function. Used to calculate the negative of the log likelihood.
 #' @param par     Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
 #' @param nit     R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
@@ -676,9 +679,9 @@ fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covar
    }
 
    if(!is.null(gamma_time_covariates)) {
-     if(!is.list(gamma_time_covariates)) {stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions).")}
-     if(any( !unlist(lapply(X = gamma_time_covariates, FUN = function(X) {is.vector(X) && length(X)==ncol(nit)})) )) {
-       stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions).")
+     if(!is.list(gamma_time_covariates)) {stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
+     if(any( !unlist(lapply(X = gamma_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
+       stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
      }
      # update default starting values
      gamm_starts <- c(gamm_starts, rep(1, times=length(gamma_time_covariates)))

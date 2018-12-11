@@ -4,13 +4,15 @@
 \alias{red_Like_open}
 \title{Internal function. Used to calculate the negative of the log likelihood.}
 \usage{
-red_Like_open(par, nit, K, red, FUN = round, VERBOSE = FALSE,
-  PARALLELIZE = FALSE)
+red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, K, red, FUN = round,
+  VERBOSE = FALSE, PARALLELIZE = FALSE)
 }
 \arguments{
 \item{par}{Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).}
 
 \item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
+
+\item{l_s_c}{list of lambda site covariates (list of vectors of length R (number of sites)).}
 
 \item{K}{Upper bound on summations (reduced counts upper bound).}
 
