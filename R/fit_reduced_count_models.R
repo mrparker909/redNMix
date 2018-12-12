@@ -212,8 +212,8 @@ drbinom <- compiler::cmpfun(drbinom_)
 drpois_1_  <- function(x, lambda, red, log=FALSE) {
   start <- x*red-red/2
   end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
-  p <- ppois(end, lambda) - ppois(start, lambda) #sum(dpois(start:end, lambda)) #
-  #p[which(p < 0)] <- 0
+  p <- ppois(start, lambda, lower.tail = FALSE) - ppois(end, lambda, lower.tail = FALSE) #ppois(end, lambda) - ppois(start, lambda) #sum(dpois(start:end, lambda)) #
+
   if(log) {
     return(log(p))
   }
@@ -638,7 +638,7 @@ END_PARALLEL <- function() {
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
 #' @param lambda_site_covariates Either NULL (no lambda site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(lambda_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param gamma_site_covariates  Either NULL (no gamma site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(gamma_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
-#' @param K      Upper bound on summations.
+#' @param K      Upper bound on summations, will be reduced by reduction factor red.
 #' @param red    reduction factor, either a number or a vector of length R.
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param ...    Additional input for optim.
