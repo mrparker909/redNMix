@@ -212,6 +212,7 @@ drbinom <- compiler::cmpfun(drbinom_)
 drpois_1_  <- function(x, lambda, red, log=FALSE) {
   start <- x*red-red/2
   end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
+
   p <- ppois(start, lambda, lower.tail = FALSE) - ppois(end, lambda, lower.tail = FALSE) #ppois(end, lambda) - ppois(start, lambda) #sum(dpois(start:end, lambda)) #
 
   if(log) {
@@ -321,7 +322,7 @@ red_Like_closed <- compiler::cmpfun(red_Like_closed_)
 
 
 
-red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
