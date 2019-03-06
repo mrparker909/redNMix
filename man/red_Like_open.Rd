@@ -4,7 +4,7 @@
 \alias{red_Like_open}
 \title{Internal function. Used to calculate the negative of the log likelihood.}
 \usage{
-red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, K, red, FUN = round,
+red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K, red,
   VERBOSE = FALSE, PARALLELIZE = FALSE)
 }
 \arguments{
@@ -13,6 +13,16 @@ red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, K, red, FUN = round,
 \item{nit}{R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.}
 
 \item{l_s_c}{list of lambda site covariates (list of vectors of length R (number of sites)).}
+
+\item{g_s_c}{list of gamma site covariates (list of vectors of length R (number of sites))}
+
+\item{g_t_c}{list of gamma time covariates (list of vectors of length T (number of sampling occasions))}
+
+\item{o_s_c}{list of omega site covariates (list of vectors of length R (number of sites))}
+
+\item{o_t_c}{list of omega time covariates (list of vectors of length T (number of sampling occasions))}
+
+\item{p_s_c}{list of pdet site covariates (list of vectors of length R (number of sites))}
 
 \item{K}{Upper bound on summations (reduced counts upper bound).}
 

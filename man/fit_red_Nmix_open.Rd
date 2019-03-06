@@ -5,9 +5,10 @@
 \title{Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.}
 \usage{
 fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
-  gamma_site_covariates = NULL, gamma_time_covariates = NULL, red, K,
-  starts = NULL, VERBOSE = FALSE, PARALLELIZE = FALSE,
-  method = "BFGS", ...)
+  gamma_site_covariates = NULL, omega_site_covariates = NULL,
+  pdet_site_covariates = NULL, gamma_time_covariates = NULL,
+  omega_time_covariates = NULL, red, K, starts = NULL,
+  VERBOSE = FALSE, PARALLELIZE = FALSE, method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -16,9 +17,17 @@ fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
 
 \item{gamma_site_covariates}{Either NULL (no gamma site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be log(gamma_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
 
+\item{omega_site_covariates}{Either NULL (no omega site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
+
+\item{pdet_site_covariates}{Either NULL (no pdet site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be logit(pdet_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
+
+\item{gamma_time_covariates}{Either NULL (no gamma time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be log(gamma_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
+
+\item{omega_time_covariates}{Either NULL (no omega time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
+
 \item{red}{reduction factor, either a number or a vector of length R.}
 
-\item{K}{Upper bound on summations.}
+\item{K}{Upper bound on summations, will be reduced by reduction factor red.}
 
 \item{starts}{Vector with four elements (if no covariates), log(lambda), log(gamma), logit(omega), and logit(pdet). When there are X covariates B_x for a parameter, will need X+1 starting values for that parameter (+1 for the constant term B0).}
 
