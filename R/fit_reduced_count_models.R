@@ -312,8 +312,6 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
 #' @param par Vector with two elements, log(lambda) and logis(pdet). If l_s_c is not NULL, need length(par) = length(l_s_c) + 2, for the B0...BK coefficients of lambda (B0 is the constant term coefficient).
 #' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param l_s_c list of lambda site covariates (list of vectors of length R (number of sites))
-#' @param g_s_c list of gamma site covariates (list of vectors of length R (number of sites))
-#' @param g_t_c list of gamma time covariates (list of vectors of length T (number of sampling occasions))
 #' @param p_s_c list of pdet site covariates (list of vectors of length R (number of sites))
 #' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)
@@ -363,6 +361,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, VERBOSE=FALSE,
     }, par=par)
   }
 
+  # TODO: add time covariate support for omega and pdet, add site covariate support for omega and pdet
   #lamb <- exp(par[1])
   #gamm <- exp(par[length(B_l)+1])
   omeg <- plogis(par[length(B_l)+length(B_g)+length(B_gt)+1])
@@ -393,166 +392,118 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, VERBOSE=FALSE,
 
   g3        <- vector(length = R, mode = "list")#list()
   g3_temp   <- list()
-  # if(var(as.vector(red))==0) { # all reduction factors are the same
-  #   tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-  #   if(length(B_g == 1)) { # save computation time when gamm and red are the same across sites
-  #     g <-tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[1,1], B_g=B_g, red = red[1,1], PARALLELIZE=PARALLELIZE)
-  #     for(i in 1:R) {
-  #       g3[[i]] <- g
-  #     }
-  #   } else {
-  #     for(i in 1:R) {
-  #       g3[[i]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, red = red[1,1], PARALLELIZE=PARALLELIZE)
-  #     }
-  #   }
-  # } else {
-    if(PARALLELIZE) {
-      # for(i in 1:R) {
-      #   tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-      #   g3[[i]]        <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm, red = red[i,1], PARALLELIZE=PARALLELIZE)
-      # }
-      if(!is.null(g_t_c)) {
-        g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach")) %:%
-          foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
-            tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-            tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
-          }
-        for(i in 1:R) {
-          g3[[i]]<- g3_temp[[i]]
-        }
-      } else {
-        g3_temp <- foreach(i=1:R, .packages=c("redNMix","foreach")) %dopar% {
-          tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-          tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
-        }
-        for(i in 1:R) {
-          for(t in 1:T) {
-            g3[[i]][[t]] <- g3_temp[[i]]
-          }
-        }
-      }
-    } else { # NOT PARALLELIZED
-      g3_temp <- list()
-      if(var(as.vector(red))==0) { # all reduction factors are the same
-        if(!is.null(g_t_c)) {        # ANY covariates are time dependent
-          if(is.null(l_s_c) & is.null(g_s_c)) { # ALL covariates are constant across sites
-            # !r & t & !s
-            for(t in 1:T) {
-              tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-              g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[1,], B_g, gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
-              for(i in 1:R) {
-                g3[[i]][[t]] <- g3_temp
-              }
-            }
-          } else {                   # at least ONE covariate is site dependent
-            # !r & t & s
-            for(i in 1:R) {
-              for(t in 1:T) {
-                tempMat      <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-                g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
-              }
-            }
-          }
-        } else {                     # NO covariates are time dependent
-          if(is.null(l_s_c) & is.null(g_s_c)) { # ALL covariates are constant across sites
-            # !r & !t & !s
-            tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-            g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[1,1], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
-            for(i in 1:R) {
-              for(t in 1:T) {
-                g3[[i]][[t]] <- g3_temp
-              }
-            }
-          } else {                     # at least ONE covariate is site dependent
-            # !r & !t & s
-            for(i in 1:R) {
-              tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-              g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
-              for(t in 1:T) {
-                g3[[i]][[t]] <- g3_temp
-              }
-            }
-          }
-        }
-      } else {                     # some reduction factors different
-        if(!is.null(g_t_c)) {        # ANY covariates are time dependent
-          if(is.null(l_s_c) & is.null(g_s_c)) { # ALL covariates are constant across sites
-            # r & t & !s
-            # note this is the same as r & t & s since r requires site dependent calc of tp_MAT
-            for(i in 1:R) {
-              for(t in 1:T) {
-                tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-                g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g, gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
-              }
-            }
-          } else {                   # at least ONE covariate is site dependent
-            # r & t & s
-            for(i in 1:R) {
-              for(t in 1:T) {
-                tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-                g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g, gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
-              }
-            }
-          }
-        } else {                     # NO covariates are time dependent
-          if(is.null(l_s_c) & is.null(g_s_c)) { # ALL covariates are constant across sites
-            # r & !t & !s
-            for(i in 1:R) {
-              tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-              g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE)
-              for(t in 1:T) {
-                g3[[i]][[t]] <- g3_temp
-              }
-            }
-          } else {                     # at least ONE covariate is site dependent
-            # r & !t & s
-            # note: same as # r & !t & !s since r requires site dependent calc of tp_MAT
-            for(i in 1:R) {
-              tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-              g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE)
-              for(t in 1:T) {
-                g3[[i]][[t]] <- g3_temp
-              }
-            }
-          }
-        }
-      }
 
-      ############### DELETE BELOW ##############
-      # g3_temp <- list()
-      # for(i in 1:R) {
-      #   if(!is.null(g_t_c)) {
-      #     for(t in 1:T) {
-      #       tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-      #       g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g, gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
-      #     }
-      #   } else { # no time covariates, save computation time by not calculating separate tp_MAT for each time step
-      #     if(var(as.vector(red))==0) { # all reduction factors are the same
-      #       tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-      #       if(length(B_g == 1)) { # save computation time when gamm and red are the same across sites
-      #         g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[1,1], B_g=B_g, red = red[1,1], PARALLELIZE=FALSE)
-      #         for(i in 1:R) {
-      #           for(t in 1:T) {
-      #             g3[[i]][[t]] <- g3_temp
-      #           }
-      #         }
-      #       } else { # save computation time when red is constant by XXXXXXXXXXXXXXXX
-      #         for(i in 1:R) {
-      #           g3[[i]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, red = red[1,1], PARALLELIZE=FALSE)
-      #         }
-      #       }
-      #     } else {
-      #       tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-      #       g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=FALSE)
-      #       for(t in 1:T) {
-      #         g3[[i]][[t]] <- g3_temp
-      #       }
-      #     }
-      #   }
-      # }
-      ############## DELETE ABOVE ###########
+  if(PARALLELIZE) {
+    # TODO: add efficiency by calculating tp_MAT minimum number of times (use cases as done for non-parallelized)
+    if(!is.null(g_t_c)) {
+      g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach")) %:%
+        foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
+          tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+          tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+        }
+      for(i in 1:R) {
+        g3[[i]]<- g3_temp[[i]]
+      }
+    } else {
+      g3_temp <- foreach(i=1:R, .packages=c("redNMix","foreach")) %dopar% {
+        tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+        tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
+      }
+      for(i in 1:R) {
+        for(t in 1:T) {
+          g3[[i]][[t]] <- g3_temp[[i]]
+        }
+      }
     }
-  #}
+  } else { # NOT PARALLELIZED
+    g3_temp <- list()
+    if(var(as.vector(red))==0) { # all reduction factors are the same
+      if(!is.null(g_t_c)) {        # ANY covariates are time dependent
+        if(is.null(l_s_c) & is.null(g_s_c)) { # ALL covariates are constant across sites
+          # !r & t & !s
+          for(t in 1:T) {
+            tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
+            g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[1,], B_g, gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
+            for(i in 1:R) {
+              g3[[i]][[t]] <- g3_temp
+            }
+          }
+        } else {                   # at least ONE covariate is site dependent
+          # !r & t & s
+          for(i in 1:R) {
+            for(t in 1:T) {
+              tempMat      <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
+              g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
+            }
+          }
+        }
+      } else {                     # NO covariates are time dependent
+        if(is.null(l_s_c) & is.null(g_s_c)) { # ALL covariates are constant across sites
+          # !r & !t & !s
+          tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
+          g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[1,1], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
+          for(i in 1:R) {
+            for(t in 1:T) {
+              g3[[i]][[t]] <- g3_temp
+            }
+          }
+        } else {                     # at least ONE covariate is site dependent
+          # !r & !t & s
+          for(i in 1:R) {
+            tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
+            g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
+            for(t in 1:T) {
+              g3[[i]][[t]] <- g3_temp
+            }
+          }
+        }
+      }
+    } else {                     # some reduction factors different
+      if(!is.null(g_t_c)) {        # ANY covariates are time dependent
+        if(is.null(l_s_c) & is.null(g_s_c)) { # ALL covariates are constant across sites
+          # r & t & !s
+          # note this is the same as r & t & s since r requires site dependent calc of tp_MAT
+          for(i in 1:R) {
+            for(t in 1:T) {
+              tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+              g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g, gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
+            }
+          }
+        } else {                   # at least ONE covariate is site dependent
+          # r & t & s
+          for(i in 1:R) {
+            for(t in 1:T) {
+              tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+              g3[[i]][[t]] <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g, gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
+            }
+          }
+        }
+      } else {                     # NO covariates are time dependent
+        if(is.null(l_s_c) & is.null(g_s_c)) { # ALL covariates are constant across sites
+          # r & !t & !s
+          for(i in 1:R) {
+            tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+            g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE)
+            for(t in 1:T) {
+              g3[[i]][[t]] <- g3_temp
+            }
+          }
+        } else {                     # at least ONE covariate is site dependent
+          # r & !t & s
+          # note: same as # r & !t & !s since r requires site dependent calc of tp_MAT
+          for(i in 1:R) {
+            tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+            g3_temp <- tp_MAT(M = tempMat, omeg = omeg, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE)
+            for(t in 1:T) {
+              g3[[i]][[t]] <- g3_temp
+            }
+          }
+        }
+      }
+    }
+
+
+  }
 
   for(i in 1:R) {
     g1_t_star[[i]] <- rep(0, times=K[i]+1)
@@ -563,7 +514,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, VERBOSE=FALSE,
   }
 
   # apply over sites (1 to R), TODO: this is a prime candidate for parallel since each site i is independent
-  ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star){
+  ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, red, g3, g1_t_star, g1_t,g1,g2, g_star) {
     g3        <- g3[[i]]
     g1_t_star <- g1_t_star[[i]]
     g1_t      <- g1_t[[i]]
@@ -603,6 +554,8 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, K, red, VERBOSE=FALSE,
 #' @param par     Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
 #' @param nit     R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param l_s_c   list of lambda site covariates (list of vectors of length R (number of sites)).
+#' @param g_s_c   list of gamma site covariates (list of vectors of length R (number of sites))
+#' @param g_t_c   list of gamma time covariates (list of vectors of length T (number of sampling occasions))
 #' @param K       Upper bound on summations (reduced counts upper bound).
 #' @param red     Reduction factor
 #' @param VERBOSE If true, prints the log likelihood to console.
