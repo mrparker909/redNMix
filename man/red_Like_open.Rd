@@ -30,7 +30,7 @@ red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K, red,
 
 \item{VERBOSE}{If true, prints the log likelihood to console.}
 
-\item{PARALLELIZE}{If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
+\item{PARALLELIZE}{If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
 }
 \description{
 Internal function. Used to calculate the negative of the log likelihood.

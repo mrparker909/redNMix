@@ -22,7 +22,7 @@ red_Like_closed(par, nit, l_s_c, p_s_c, K, red, FUN = round,
 
 \item{VERBOSE}{If true, prints the calculated log likelihood to console.}
 
-\item{PARALLELIZE}{If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
+\item{PARALLELIZE}{If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
 }
 \description{
 Internal function. Used to calculate the negative of the log likelihood.

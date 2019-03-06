@@ -316,7 +316,7 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
 #' @param K   Upper bound on summations (input reduced count upper bound).
 #' @param red reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
-#' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
+#' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
 #' @export
 red_Like_closed <- compiler::cmpfun(red_Like_closed_)
 
@@ -336,7 +336,6 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
       par[X]
     }, par=par)
   }
-
 
   # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
   gamm <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for gamma
@@ -372,7 +371,6 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
     }, par=par)
   }
 
-
   # extract omega estimates from par, setup omega covariate matrix omet, and covariate vector B_ot
   omet <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for gamma
   B_ot <- NULL # covariates for omega
@@ -396,51 +394,46 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
   }
 
   # TODO: add time covariate support for pdet
-  #lamb <- exp(par[1])
-  #gamm <- exp(par[length(B_l)+1])
-  #omeg <- plogis(par[length(B_l)+length(B_g)+length(B_gt)+1])
-  #pdet <- plogis(par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+1])
 
   Y <- nit
-
-
-  # g1_t_star[k] holds g1[k] * g_star[k]
-  # allocate memory for vectors
-
-  # g1_t_star <- rep(0, times=K+1)
-  # g1_t      <- numeric(K+1)
-  # g1        <- numeric(K+1)
-  # g2        <- numeric(K+1)
-  # g_star    <- rep(1, times=K+1)
-
-  # g3 is the transition probability matrix
-  # allocate memory for matrix
-  #g3 <- matrix(0, nrow = K+1, ncol=K+1)
-  #g3 <- tp_MAT(M = g3, omeg = omeg, gamm = gamm, red = red, PARALLELIZE=PARALLELIZE)
 
   g1_t_star <- list()
   g1_t      <- list()
   g1        <- list()
   g2        <- list()
   g_star    <- list()
-
   g3        <- vector(length = R, mode = "list")#list()
   g3_temp   <- list()
 
   if(PARALLELIZE) {
-    # TODO: add efficiency by calculating tp_MAT minimum number of times (use cases as done for non-parallelized)
-    if(!is.null(g_t_c) | !is.null(o_t_c)) {
-      g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach")) %:%
-        foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
-          tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-          if(is.null(o_t_c)) tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
-          else if(is.null(g_t_c)) tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
-          else tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+    if(!is.null(g_t_c) | !is.null(o_t_c)) { # TIME DEPENDENT
+      if(!is.null(g_s_c) | !is.null(o_s_c) | var(as.vector(red))!=0) { # SITE DEPENDENT
+        g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach")) %:%
+          foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
+            tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+            if(is.null(o_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+            else if(is.null(g_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
+            else tp_MAT(M = tempMat <- tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+            return(tempMat)
+          }
+        for(i in 1:R) {
+          g3[[i]]<- g3_temp[[i]]
         }
-      for(i in 1:R) {
-        g3[[i]]<- g3_temp[[i]]
+      } else {# NOT SITE DEPENDENT
+        g3_temp <- foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
+          tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+          if(is.null(o_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=TRUE)
+          else if(is.null(g_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[1,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=TRUE)
+          else tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=TRUE)
+          return(tempMat)
+        }
+        for(i in 1:R) {
+          for(t in 1:T) {
+            g3[[i]][[t]] <- g3_temp[[t]]
+          }
+        }
       }
-    } else {
+    } else {  # NOT TIME DEPENDENT
       g3_temp <- foreach(i=1:R, .packages=c("redNMix","foreach")) %dopar% {
         tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
         tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
@@ -614,7 +607,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
 #' @param K       Upper bound on summations (reduced counts upper bound).
 #' @param red     Reduction factor
 #' @param VERBOSE If true, prints the log likelihood to console.
-#' @param PARALLELIZE If true, will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
+#' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
 #' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
 #' @export
 red_Like_open <- compiler::cmpfun(red_Like_open_)
@@ -671,6 +664,7 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' @param K      Upper bound on summations, either a single number, or a vector of K values, one for each site (full count value, eg if K=300 for full counts, K=reduction(300,red) for reduced counts).
 #' @param red    reduction factor, either a number, or a vector of reduction factors (R sites reductions).
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
+#' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
 #' @param ...    Additional input for optim.
 #' @examples
 #' START_PARALLEL(num_cores=4)
@@ -776,13 +770,50 @@ END_PARALLEL <- function() {
 #' @param omega_time_covariates  Either NULL (no omega time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param K      Upper bound on summations, will be reduced by reduction factor red.
 #' @param red    reduction factor, either a number or a vector of length R.
-#' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
+#' @param VERBOSE If TRUE, prints the log likelihood to console at each optim iteration.
+#' @param PARALLELIZE If TRUE, calculation will be split over threads by sites and times. This will not improve computation time if there are no site or time covariates. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
 #' @param ...    Additional input for optim.
 #' @examples
-#' START_PARALLEL(num_cores=4)
+#'
 #' Y   <- gen_Nmix_open(num_sites = 5, num_times = 5, lambda = 20, pdet = 0.7, omega = 0.7, gamma = 2)
-#' out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
+#' out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5))
+#'
+#'
+#' # example with site covariates:
+#' Y1 <- gen_Nmix_open(num_sites = 2, num_times = 5, lambda = 10, gamma = 5, omega = 0.50, pdet = 0.75)
+#' Y2 <- gen_Nmix_open(num_sites = 3, num_times = 5, lambda = 5, gamma = 10, omega = 0.75, pdet = 0.50)
+#' Y  <- rbind(Y1$nit, Y2$nit)
+#' START_PARALLEL(num_cores=5)
+#' mod1 <- fit_red_Nmix_open(nit = Y,
+#'                           lambda_site_covariates = list(l1=c(0,0,1,1,1)),
+#'                           gamma_site_covariates  = list(gs=c(0,0,1,1,1)),
+#'                           gamma_time_covariates  = NULL,
+#'                           omega_site_covariates  = list(os=c(0,0,1,1,1)),
+#'                           omega_time_covariates  = NULL,
+#'                           pdet_site_covariates   = list(ps=c(0,0,1,1,1)),
+#'                           red = 4,
+#'                           K   = 50,
+#'                           starts  = NULL,
+#'                           method  = "BFGS",
+#'                           VERBOSE = FALSE,
+#'                           PARALLELIZE = TRUE)
 #' END_PARALLEL()
+#' # lambda sites 1 and 2 estimate:
+#' exp(mod1$par[1])
+#' # lambda sites 3, 4, and 4 estimate:
+#' exp(sum(mod1$par[1:2]))
+#' # gamma sites 1 and 2 estimate:
+#' exp(mod1$par[3])
+#' # gamma sites 3, 4, and 4 estimate:
+#' exp(sum(mod1$par[3:4]))
+#' # omega sites 1 and 2 estimate:
+#' plogis(mod1$par[5])
+#' # omega sites 3, 4, and 4 estimate:
+#' plogis(sum(mod1$par[5:6]))
+#' # pdet sites 1 and 2 estimate:
+#' plogis(mod1$par[7])
+#' # pdet sites 3, 4, and 4 estimate:
+#' plogis(sum(mod1$par[7:8]))
 #' @export
 fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
    if(length(red)==1) {

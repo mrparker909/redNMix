@@ -31,7 +31,9 @@ fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
 
 \item{starts}{Vector with four elements (if no covariates), log(lambda), log(gamma), logit(omega), and logit(pdet). When there are X covariates B_x for a parameter, will need X+1 starting values for that parameter (+1 for the constant term B0).}
 
-\item{VERBOSE}{If true, prints the log likelihood to console at each optim iteration.}
+\item{VERBOSE}{If TRUE, prints the log likelihood to console at each optim iteration.}
+
+\item{PARALLELIZE}{If TRUE, calculation will be split over threads by sites and times. This will not improve computation time if there are no site or time covariates. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
 
 \item{...}{Additional input for optim.}
 }
@@ -39,8 +41,44 @@ fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
 Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.
 }
 \examples{
-START_PARALLEL(num_cores=4)
+
 Y   <- gen_Nmix_open(num_sites = 5, num_times = 5, lambda = 20, pdet = 0.7, omega = 0.7, gamma = 2)
-out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5), PARALLELIZE=TRUE)
+out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5))
+
+
+# example with site covariates:
+Y1 <- gen_Nmix_open(num_sites = 2, num_times = 5, lambda = 10, gamma = 5, omega = 0.50, pdet = 0.75)
+Y2 <- gen_Nmix_open(num_sites = 3, num_times = 5, lambda = 5, gamma = 10, omega = 0.75, pdet = 0.50)
+Y  <- rbind(Y1$nit, Y2$nit)
+START_PARALLEL(num_cores=5)
+mod1 <- fit_red_Nmix_open(nit = Y,
+                          lambda_site_covariates = list(l1=c(0,0,1,1,1)),
+                          gamma_site_covariates  = list(gs=c(0,0,1,1,1)),
+                          gamma_time_covariates  = NULL,
+                          omega_site_covariates  = list(os=c(0,0,1,1,1)),
+                          omega_time_covariates  = NULL,
+                          pdet_site_covariates   = list(ps=c(0,0,1,1,1)),
+                          red = 4,
+                          K   = 50,
+                          starts  = NULL,
+                          method  = "BFGS",
+                          VERBOSE = FALSE,
+                          PARALLELIZE = TRUE)
 END_PARALLEL()
+# lambda sites 1 and 2 estimate:
+exp(mod1$par[1])
+# lambda sites 3, 4, and 4 estimate:
+exp(sum(mod1$par[1:2]))
+# gamma sites 1 and 2 estimate:
+exp(mod1$par[3])
+# gamma sites 3, 4, and 4 estimate:
+exp(sum(mod1$par[3:4]))
+# omega sites 1 and 2 estimate:
+plogis(mod1$par[5])
+# omega sites 3, 4, and 4 estimate:
+plogis(sum(mod1$par[5:6]))
+# pdet sites 1 and 2 estimate:
+plogis(mod1$par[7])
+# pdet sites 3, 4, and 4 estimate:
+plogis(sum(mod1$par[7:8]))
 }

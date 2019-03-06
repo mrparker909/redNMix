@@ -23,6 +23,8 @@ fit_red_Nmix_closed(nit, lambda_site_covariates = NULL,
 
 \item{VERBOSE}{If true, prints the log likelihood to console at each optim iteration.}
 
+\item{PARALLELIZE}{If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
+
 \item{...}{Additional input for optim.}
 }
 \description{
