@@ -208,14 +208,16 @@ drbinom <- compiler::cmpfun(drbinom_)
 
 drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
   require(Rmpfr)
-  start <- ceiling(x*red - red/2)
-  end   <- floor(start + red - 1)
 
   pt <- NULL
   i <- 0
   for(X in x) {
     i <- i + 1
-    pt[i] <- optimizeAPA::dbinom_APA(X, size*red, prob=prob, precBits=precBits)
+    start <- (X*red - red/2)
+    end   <- (start + red)
+
+    temp  <- optimizeAPA::dbinom_APA((start+1):end, size*red, prob=prob, precBits=precBits)
+    pt[i] <- sum(new("mpfr", unlist(temp)))
   }
   p <- new("mpfr", unlist(pt))
   if(log) {
@@ -234,12 +236,46 @@ drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
 #' @return The probability of observing quantile \eqn{x}.
 #' @examples
 #' Y <- drbinomAPA(0:20, 20, 0.3, 10, precBits=64)
-#' plot(Y, xlab="Y~rBinom(N=20,p=0.3,r=10)", ylab="P[Y=y]")
 #' @export
 drbinomAPA <- compiler::cmpfun(drbinomAPA_)
 
+
 #' internal function
-drpois_1_  <- function(x, lambda, red, log=FALSE) {
+drpoisAPA_1  <- function(x, lambda, red, precBits=128, log=FALSE) {
+  require(Rmpfr)
+
+  pt <- NULL
+  i <- 0
+  for(X in x) {
+    i <- i + 1
+    start <- as.integer(X*red - red/2) +1
+    end   <- (start + red)-1
+    temp  <- optimizeAPA::dpois_APA((start):(end), lambda, precBits=precBits)
+    pt[i] <- sum(new("mpfr", unlist(temp)))
+  }
+  p <- new("mpfr", unlist(pt))
+  if(log) {
+    return(log(p))
+  }
+  return(p)
+}
+
+#' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
+#'
+#' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
+#' @param lambda Mean of the full count poisson distribution.
+#' @param red The factor r by which x was reduced.
+#' @param precBits Number of bits of precision for arbitrary precision arithmetic.
+#' @return The probability of observing quantile \eqn{x}
+#' @examples
+#' # probability of observing 105 from pois(lam=90)
+#' x <- drpoisAPA(x = 105, lambda = 90, precBits=64)
+#' @export
+drpoisAPA <- compiler::cmpfun(drpoisAPA_1)
+
+
+#' internal function
+drpois_1  <- function(x, lambda, red, log=FALSE) {
   start <- x*red-red/2
   end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
 
@@ -250,8 +286,6 @@ drpois_1_  <- function(x, lambda, red, log=FALSE) {
   }
   return(p)
 }
-drpois_1 <- compiler::cmpfun(drpois_1_)
-
 
 #' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
 #'
@@ -268,7 +302,7 @@ drpois_1 <- compiler::cmpfun(drpois_1_)
 #' Y <- drpois(seq(1,20,1), 55, 10)
 #' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
-drpois <- drpois_1
+drpois <- compiler::cmpfun(drpois_1)
 
 
 

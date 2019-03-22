@@ -12,4 +12,7 @@ Imports:
   foreach,
   doParallel,
   reshape2,
-  numbers
+  numbers,
+  optimizeAPA
+Remotes:
+  mrparker909/optimizeAPA
