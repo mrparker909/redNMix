@@ -206,7 +206,37 @@ drbinom_ <- function(x, size, prob, red, log=FALSE) {
 #' @export
 drbinom <- compiler::cmpfun(drbinom_)
 
+drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
+  require(Rmpfr)
+  start <- ceiling(x*red - red/2)
+  end   <- floor(start + red - 1)
 
+  pt <- NULL
+  i <- 0
+  for(X in x) {
+    i <- i + 1
+    pt[i] <- optimizeAPA::dbinom_APA(X, size*red, prob=prob, precBits=precBits)
+  }
+  p <- new("mpfr", unlist(pt))
+  if(log) {
+    return(log(p))
+  }
+  return(p)
+}
+#' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
+#' takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
+#'
+#' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
+#' @param size Number of trials.
+#' @param prob Probability of success for each trial.
+#' @param red The factor r by which x has been reduced.
+#' @param precBits Number of bits of precision for arbitrary precision arithmetic.
+#' @return The probability of observing quantile \eqn{x}.
+#' @examples
+#' Y <- drbinomAPA(0:20, 20, 0.3, 10, precBits=64)
+#' plot(Y, xlab="Y~rBinom(N=20,p=0.3,r=10)", ylab="P[Y=y]")
+#' @export
+drbinomAPA <- compiler::cmpfun(drbinomAPA_)
 
 #' internal function
 drpois_1_  <- function(x, lambda, red, log=FALSE) {
@@ -242,69 +272,129 @@ drpois <- drpois_1
 
 
 
-red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=64) {
   T <- length(unique(nit$time))
   R <- length(unique(nit$site))
 
-  # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
-  lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
-  B_l <- par[1] # covariates for lambda
-  if(!is.null(l_s_c)) {
-    lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
-    B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
-      par[X]
-    }, par=par)
-  }
-
-  # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
-  pdet <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
-  B_p <- par[length(B_l)+1] # covariates for pdet
-  if(!is.null(p_s_c)) {
-    pdet <- cbind(pdet, do.call(cbind, p_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
-    B_p  <- sapply(X = 1:(length(p_s_c)+1)+length(B_l), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
-      par[X]
-    }, par=par)
-  }
-
-  Y    <- nit
-  Y_df <- nit
-
-  l <- 0
-  if(PARALLELIZE) {
-    li <- foreach(i=1:R) %dopar% {
-      Yi_df <- Y_df[which(Y_df$site==i),]
-      li <- 0
-      ni <- max(Yi_df$count)
-
-      for(Ni in ni:K[i,1]) {
-        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
-
-        lit_ <- prod(lit)
-
-        li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
-      }
-      return(log(li))
+  if(!APA) {
+    # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
+    lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+    B_l <- par[1] # covariates for lambda
+    if(!is.null(l_s_c)) {
+      lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+      B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        par[X]
+      }, par=par)
     }
-    l <- sum(unlist(li))
-    ###
-  } else {
 
-    for(i in 1:R) {
-      Yi_df <- Y_df[which(Y_df$site==i),]
-      li <- 0
-      ni <- max(Yi_df$count)
+    # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
+    pdet <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+    B_p <- par[length(B_l)+1] # covariates for pdet
+    if(!is.null(p_s_c)) {
+      pdet <- cbind(pdet, do.call(cbind, p_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+      B_p  <- sapply(X = 1:(length(p_s_c)+1)+length(B_l), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        par[X]
+      }, par=par)
+    }
 
-      for(Ni in ni:K[i,1]) {
-        lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
+    Y    <- nit
+    Y_df <- nit
 
-        lit_ <- prod(lit)
-        li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
+    l <- 0
+    if(PARALLELIZE) {
+      li <- foreach(i=1:R) %dopar% {
+        Yi_df <- Y_df[which(Y_df$site==i),]
+        li <- 0
+        ni <- max(Yi_df$count)
+
+        for(Ni in ni:K[i,1]) {
+          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
+
+          lit_ <- prod(lit)
+
+          li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
+        }
+        return(log(li))
       }
-      l <- l+log(li)
+      l <- sum(unlist(li))
+      ###
+    } else {
+
+      for(i in 1:R) {
+        Yi_df <- Y_df[which(Y_df$site==i),]
+        li <- 0
+        ni <- max(Yi_df$count)
+
+        for(Ni in ni:K[i,1]) {
+          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
+
+          lit_ <- prod(lit)
+          li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
+        }
+        l <- l+log(li)
+      }
+    }
+  } else { # DO APA CALCULATIONS
+
+    # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
+    lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+    B_l <- Rmpfr::mpfr(par[1], precBits=precBits) # covariates for lambda
+    if(!is.null(l_s_c)) {
+      lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+      B_l  <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        Rmpfr::mpfr(par[X], precBits=precBits)
+      }, par=par)
+    }
+
+    # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
+    pdet <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+    B_p <- par[length(B_l)+1] # covariates for pdet
+    if(!is.null(p_s_c)) {
+      pdet <- cbind(pdet, do.call(cbind, p_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+      B_p  <- sapply(X = 1:(length(p_s_c)+1)+length(B_l), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        Rmpfr::mpfr(par[X], precBits=precBits)
+      }, par=par)
+    }
+
+    Y    <- nit
+    Y_df <- nit
+
+    l <- Rmpfr::mpfr(0, precBits=precBits)
+    if(PARALLELIZE) {
+      li <- foreach(i=1:R) %dopar% {
+        Yi_df <- Y_df[which(Y_df$site==i),]
+        li <- Rmpfr::mpfr(0, precBits=precBits)
+        ni <- max(Yi_df$count)
+
+        for(Ni in ni:K[i,1]) {
+          lit <- with(data = Yi_df, expr = drbinomAPA(x = count, size = Ni, prob = plogisAPA(sum(B_p*pdet[i,]), precBits=precBits), red=reduc, precBits=precBits))
+
+          lit_ <- prod(lit)
+
+          li <- li + lit_*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits=precBits)
+        }
+        return(log(li))
+      }
+      l <- sum(unlist(li))
+      ###
+    } else {
+
+      for(i in 1:R) {
+        Yi_df <- Y_df[which(Y_df$site==i),]
+        li <- Rmpfr::mpfr(0, precBits=precBits)
+        ni <- max(Yi_df$count)
+
+        for(Ni in ni:K[i,1]) {
+          lit <- with(data = Yi_df, expr = drbinomAPA(x = count, size = Ni, prob = plogisAPA(sum(B_p*pdet[i,]), precBits=precBits), red=reduc, precBits=precBits))
+
+          lit_ <- prod(lit)
+          li <- li + lit_*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits=precBits)
+        }
+        l <- l+log(li)
+      }
     }
   }
-
-  if(VERBOSE) {print(paste0("log likelihood: ",l))}
+  if(VERBOSE) {print(paste0("log likelihood: ",format(l)))}
   return(-1*l)
 }
 
@@ -317,6 +407,8 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
 #' @param red reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)
 #' @param VERBOSE If true, prints the calculated log likelihood to console.
 #' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
+#' @param APA Default is FALSE. If true, will use arbitrary precision arithmetic in calculating the likelihood. Note that APA will be slower, however it is required for site population sizes larger than about 200. If APA = TRUE, then precBits specifies the number of bits of precision to use in the calculations.
+#' @param precBits If APA=TRUE, then precBits specifies the number of bits of precision for arbitrary precision arithmetic.
 #' @export
 red_Like_closed <- compiler::cmpfun(red_Like_closed_)
 
