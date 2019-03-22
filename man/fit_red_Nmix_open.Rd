@@ -7,8 +7,9 @@
 fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
   gamma_site_covariates = NULL, omega_site_covariates = NULL,
   pdet_site_covariates = NULL, gamma_time_covariates = NULL,
-  omega_time_covariates = NULL, red, K, starts = NULL,
-  VERBOSE = FALSE, PARALLELIZE = FALSE, method = "BFGS", ...)
+  omega_time_covariates = NULL, pdet_time_covariates = NULL, red, K,
+  starts = NULL, VERBOSE = FALSE, PARALLELIZE = FALSE,
+  method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -24,6 +25,8 @@ fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
 \item{gamma_time_covariates}{Either NULL (no gamma time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be log(gamma_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
 
 \item{omega_time_covariates}{Either NULL (no omega time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
+
+\item{pdet_time_covariates}{Either NULL (no pdet time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
 
 \item{red}{reduction factor, either a number or a vector of length R.}
 
@@ -58,6 +61,7 @@ mod1 <- fit_red_Nmix_open(nit = Y,
                           omega_site_covariates  = list(os=c(0,0,1,1,1)),
                           omega_time_covariates  = NULL,
                           pdet_site_covariates   = list(ps=c(0,0,1,1,1)),
+                          pdet_time_covariates   = NULL,
                           red = 4,
                           K   = 50,
                           starts  = NULL,
@@ -67,18 +71,18 @@ mod1 <- fit_red_Nmix_open(nit = Y,
 END_PARALLEL()
 # lambda sites 1 and 2 estimate:
 exp(mod1$par[1])
-# lambda sites 3, 4, and 4 estimate:
+# lambda sites 3, 4, and 5 estimate:
 exp(sum(mod1$par[1:2]))
 # gamma sites 1 and 2 estimate:
 exp(mod1$par[3])
-# gamma sites 3, 4, and 4 estimate:
+# gamma sites 3, 4, and 5 estimate:
 exp(sum(mod1$par[3:4]))
 # omega sites 1 and 2 estimate:
 plogis(mod1$par[5])
-# omega sites 3, 4, and 4 estimate:
+# omega sites 3, 4, and 5 estimate:
 plogis(sum(mod1$par[5:6]))
 # pdet sites 1 and 2 estimate:
 plogis(mod1$par[7])
-# pdet sites 3, 4, and 4 estimate:
+# pdet sites 3, 4, and 5 estimate:
 plogis(sum(mod1$par[7:8]))
 }

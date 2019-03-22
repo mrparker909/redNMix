@@ -4,8 +4,8 @@
 \alias{red_Like_open}
 \title{Internal function. Used to calculate the negative of the log likelihood.}
 \usage{
-red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K, red,
-  VERBOSE = FALSE, PARALLELIZE = FALSE)
+red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K,
+  red, VERBOSE = FALSE, PARALLELIZE = FALSE)
 }
 \arguments{
 \item{par}{Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).}
@@ -23,6 +23,8 @@ red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K, red,
 \item{o_t_c}{list of omega time covariates (list of vectors of length T (number of sampling occasions))}
 
 \item{p_s_c}{list of pdet site covariates (list of vectors of length R (number of sites))}
+
+\item{p_t_c}{list of pdet time covariates (list of vectors of length T (number of sampling occasions))}
 
 \item{K}{Upper bound on summations (reduced counts upper bound).}
 

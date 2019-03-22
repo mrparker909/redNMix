@@ -322,7 +322,7 @@ red_Like_closed <- compiler::cmpfun(red_Like_closed_)
 
 
 
-red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
@@ -372,7 +372,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
   }
 
   # extract omega estimates from par, setup omega covariate matrix omet, and covariate vector B_ot
-  omet <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for gamma
+  omet <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for omega
   B_ot <- NULL # covariates for omega
   if(!is.null(o_t_c)) {
     omet <- do.call(cbind, o_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
@@ -393,7 +393,18 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
     }, par=par)
   }
 
-  # TODO: add time covariate support for pdet
+
+  # extract pdet estimates from par, setup pdet covariate matrix pt, and covariate vector B_pt
+  pt   <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for pdet
+  B_pt <- NULL # covariates for pdet
+  if(!is.null(p_t_c)) {
+    pt   <- do.call(cbind, p_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+
+    B_pt <- sapply(X = 1:length(p_t_c), FUN = function(X,par) { # one coeff per covariate
+      par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+length(B_p)+X]
+    }, par=par)
+  }
+
 
   Y <- nit
 
@@ -559,7 +570,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
   }
 
   # apply over sites (1 to R), TODO: this is a prime candidate for parallel since each site i is independent
-  ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, B_p, red, g3, g1_t_star, g1_t,g1,g2, g_star) {
+  ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, B_p, pt, B_pt, red, g3, g1_t_star, g1_t,g1,g2, g_star) {
     g3        <- g3[[i]]
     g1_t_star <- g1_t_star[[i]]
     g1_t      <- g1_t[[i]]
@@ -572,7 +583,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
     # loop backwards over times t, stopping at t==2
     for(t in T:2) {
       # size takes possible value of N (0 to K) at time t (for t > 1)
-      g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = plogis(sum(pdet[i,] * B_p)), red = red[i,t])
+      g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,t])
       g1_t_star <- g1_t * g_star
 
       # update g_star
@@ -580,13 +591,13 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
     }
 
     # size takes possible values of N (0 to K) at time t==1
-    g1 <- drbinom(x = Y[i,1], size = 0:K, prob = plogis(sum(pdet[i,] * B_p)), red = red[i,1])
+    g1 <- drbinom(x = Y[i,1], size = 0:K, prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,1])
     g2 <- drpois(x = 0:K, lambda = exp(sum(lamb[i,] * B_l)), red = red[i,1])
 
 
     # apply recursive definition of likelihood
     return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
-  }, FUN.VALUE = numeric(1), K=K, T=T, Y=Y, lamb=lamb, B_l=B_l, pdet=pdet, B_p=B_p, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
+  }, FUN.VALUE = numeric(1), K=K, T=T, Y=Y, lamb=lamb, B_l=B_l, pdet=pdet, B_p=B_p, pt=pt, B_pt=B_pt, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
 
   ll <- sum(unlist(ll_i))
   ###
@@ -604,6 +615,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, K
 #' @param o_s_c   list of omega site covariates (list of vectors of length R (number of sites))
 #' @param o_t_c   list of omega time covariates (list of vectors of length T (number of sampling occasions))
 #' @param p_s_c   list of pdet site covariates (list of vectors of length R (number of sites))
+#' @param p_t_c   list of pdet time covariates (list of vectors of length T (number of sampling occasions))
 #' @param K       Upper bound on summations (reduced counts upper bound).
 #' @param red     Reduction factor
 #' @param VERBOSE If true, prints the log likelihood to console.
@@ -768,6 +780,7 @@ END_PARALLEL <- function() {
 #' @param pdet_site_covariates   Either NULL (no pdet site covariates) or a list of vectors of length R, where each vector represents one site covariate, and where the vector entries correspond to covariate values for each site. Note that the covariate structure is assumed to be logit(pdet_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param gamma_time_covariates  Either NULL (no gamma time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be log(gamma_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param omega_time_covariates  Either NULL (no omega time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
+#' @param pdet_time_covariates   Either NULL (no pdet time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param K      Upper bound on summations, will be reduced by reduction factor red.
 #' @param red    reduction factor, either a number or a vector of length R.
 #' @param VERBOSE If TRUE, prints the log likelihood to console at each optim iteration.
@@ -791,6 +804,7 @@ END_PARALLEL <- function() {
 #'                           omega_site_covariates  = list(os=c(0,0,1,1,1)),
 #'                           omega_time_covariates  = NULL,
 #'                           pdet_site_covariates   = list(ps=c(0,0,1,1,1)),
+#'                           pdet_time_covariates   = NULL,
 #'                           red = 4,
 #'                           K   = 50,
 #'                           starts  = NULL,
@@ -800,22 +814,22 @@ END_PARALLEL <- function() {
 #' END_PARALLEL()
 #' # lambda sites 1 and 2 estimate:
 #' exp(mod1$par[1])
-#' # lambda sites 3, 4, and 4 estimate:
+#' # lambda sites 3, 4, and 5 estimate:
 #' exp(sum(mod1$par[1:2]))
 #' # gamma sites 1 and 2 estimate:
 #' exp(mod1$par[3])
-#' # gamma sites 3, 4, and 4 estimate:
+#' # gamma sites 3, 4, and 5 estimate:
 #' exp(sum(mod1$par[3:4]))
 #' # omega sites 1 and 2 estimate:
 #' plogis(mod1$par[5])
-#' # omega sites 3, 4, and 4 estimate:
+#' # omega sites 3, 4, and 5 estimate:
 #' plogis(sum(mod1$par[5:6]))
 #' # pdet sites 1 and 2 estimate:
 #' plogis(mod1$par[7])
-#' # pdet sites 3, 4, and 4 estimate:
+#' # pdet sites 3, 4, and 5 estimate:
 #' plogis(sum(mod1$par[7:8]))
 #' @export
-fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, pdet_time_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
    if(length(red)==1) {
      red <- rep(red, times=nrow(nit))
    }
@@ -882,7 +896,7 @@ fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covar
        stop("invalid omega_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
      }
      # update default starting values
-     omeg_starts <- c(omeg_starts, rep(1, times=length(omega_time_covariates)))
+     omeg_starts <- c(omeg_starts, rep(0, times=length(omega_time_covariates)))
      numCov      <- length(omeg_starts)-length(omeg_names)
      omeg_names  <- c(omeg_names, paste0("B_o_t_",1:numCov))
    }
@@ -898,6 +912,19 @@ fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covar
      pdet_names  <- c(pdet_names, paste0("B_p_s_",1:numCov))
    }
 
+
+   if(!is.null(pdet_time_covariates)) {
+     if(!is.list(pdet_time_covariates)) {stop("invalid pdet_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
+     if(any( !unlist(lapply(X = pdet_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
+       stop("invalid pdet_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
+     }
+     # update default starting values
+     pdet_starts <- c(pdet_starts, rep(0, times=length(pdet_time_covariates)))
+     numCov      <- length(pdet_starts)-length(pdet_names)
+     pdet_names  <- c(pdet_names, paste0("B_p_t_",1:numCov))
+   }
+
+
    if(is.null(starts)) {
      starts <- c(lamb_starts, gamm_starts, omeg_starts, pdet_starts)
    }
@@ -912,6 +939,7 @@ fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covar
                 o_s_c   = omega_site_covariates,
                 o_t_c   = omega_time_covariates,
                 p_s_c   = pdet_site_covariates,
+                p_t_c   = pdet_time_covariates,
                 K       = red_K,
                 red     = red,
                 VERBOSE = VERBOSE,
