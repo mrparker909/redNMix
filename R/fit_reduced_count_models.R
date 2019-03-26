@@ -389,8 +389,6 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
           lit <- 1
           for(t in 1:T) {
             lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
-            # print(drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1]))
-            print(paste("lit: ",as.numeric(lit)))
           }
           li <- li + lit*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
 
@@ -443,7 +441,7 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
         for(Ni in ni:K[i,1]) {
           lit <- 1
           for(t in 1:T) {
-            lit <- lit*drbinomAPA(x = Y[i,t], size = Ni, prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits), red=red[i,1], precBits = precBits)
+            lit <- lit*new("mpfr",unlist(drbinomAPA(x = Y[i,t], size = Ni, prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits), red=red[i,1], precBits = precBits)))
           }
           li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
 
@@ -475,40 +473,13 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
         for(Ni in ni:K[i,1]) {
           lit <- Rmpfr::mpfr(1,precBits=precBits)
           for(t in 1:T) {
-            str(drbinomAPA(x = Y[i,t],
-                           size = Ni,
-                           prob = optimizeAPA::plogis_APA(
-                             x=sum(B_p*pdet[i,]), precBits = precBits),
-                           red=red[i,1],
-                           precBits = precBits))
-            class(drbinomAPA(x = Y[i,t],
-                             size = Ni,
-                             prob = optimizeAPA::plogis_APA(
-                               x=sum(B_p*pdet[i,]), precBits = precBits),
-                             red=red[i,1],
-                             precBits = precBits))
-            lit <- lit*drbinomAPA(x = Y[i,t],
-                                  size = Ni,
-                                  prob = optimizeAPA::plogis_APA(
-                                    x=sum(B_p*pdet[i,]), precBits = precBits),
-                                  red=red[i,1],
-                                  precBits = precBits)
-            # new("mpfr",unlist(drbinomAPA(x = Y[i,t],
-            #                                         size = Ni,
-            #                                         prob = optimizeAPA::plogis_APA(
-            #                                           x=sum(B_p*pdet[i,]), precBits = precBits),
-            #                                         red=red[i,1],
-            #                                         precBits = precBits)))
+            lit <- lit*new("mpfr",unlist(drbinomAPA(x = Y[i,t],
+                                                    size = Ni,
+                                                    prob = optimizeAPA::plogis_APA(
+                                                      x=sum(B_p*pdet[i,]), precBits = precBits),
+                                                    red=red[i,1],
+                                                    precBits = precBits)))
 
-            #lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
-
-            print(paste("lit: ",as.numeric(lit)))
-            # print(as.numeric(new("mpfr",unlist(drbinomAPA(x = Y[i,t],
-            #                                               size = Ni,
-            #                                               prob = optimizeAPA::plogis_APA(
-            #                                                 x=sum(B_p*pdet[i,]), precBits = precBits),
-            #                                               red=red[i,1],
-            #                                               precBits = precBits)))))
           }
           li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
           #print(paste("li: ",as.numeric(li)))
