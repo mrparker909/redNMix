@@ -213,11 +213,16 @@ drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
   i <- 0
   for(X in x) {
     i <- i + 1
-    start <- (X*red - red/2)
-    end   <- (start + red)
+    start <- ceiling(X*red - red/2)
+    end   <- round2(X*red + red/2)-1
 
-    temp  <- optimizeAPA::dbinom_APA((start+1):end, size*red, prob=prob, precBits=precBits)
-    pt[i] <- sum(new("mpfr", unlist(temp)))
+    ptj <- NULL
+    j <- 0
+    for(Y in (start):(end)) {
+      j <- j+1
+      ptj[[j]] <- optimizeAPA::dbinom_APA(Y, size*red, prob=prob, precBits=precBits)
+    }
+    pt[i] <- sum(new("mpfr", unlist(ptj)))
   }
   p <- new("mpfr", unlist(pt))
   if(log) {
@@ -237,7 +242,7 @@ drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
 #' @examples
 #' Y <- drbinomAPA(0:20, 20, 0.3, 10, precBits=64)
 #' @export
-drbinomAPA <- compiler::cmpfun(drbinomAPA_)
+drbinomAPA <- Vectorize(compiler::cmpfun(drbinomAPA_))
 
 
 #' internal function
@@ -307,8 +312,10 @@ drpois <- compiler::cmpfun(drpois_1)
 
 
 red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=64) {
-  T <- length(unique(nit$time))
-  R <- length(unique(nit$site))
+  # T <- length(unique(nit$time))
+  # R <- length(unique(nit$site))
+  T <- ncol(nit)
+  R <- nrow(nit)
 
   if(!APA) {
     # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
@@ -331,22 +338,33 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
       }, par=par)
     }
 
-    Y    <- nit
-    Y_df <- nit
+    # Y    <- nit
+    # Y_df <- nit
+    Y <- nit
 
     l <- 0
     if(PARALLELIZE) {
       li <- foreach(i=1:R) %dopar% {
-        Yi_df <- Y_df[which(Y_df$site==i),]
+        # Yi_df <- Y_df[which(Y_df$site==i),]
+        # li <- 0
+        # ni <- max(Yi_df$count)
         li <- 0
-        ni <- max(Yi_df$count)
+        ni <- max(Y[i,])
 
+        # for(Ni in ni:K[i,1]) {
+        #   lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
+        #
+        #   lit_ <- prod(lit)
+        #
+        #   li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
+        # }
+        # return(log(li))
         for(Ni in ni:K[i,1]) {
-          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
-
-          lit_ <- prod(lit)
-
-          li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
+          lit <- 1
+          for(t in 1:T) {
+            lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
+          }
+          li <- li + lit*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
         }
         return(log(li))
       }
@@ -355,23 +373,35 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
     } else {
 
       for(i in 1:R) {
-        Yi_df <- Y_df[which(Y_df$site==i),]
+        # Yi_df <- Y_df[which(Y_df$site==i),]
+        # li <- 0
+        # ni <- max(Yi_df$count)
         li <- 0
-        ni <- max(Yi_df$count)
+        ni <- max(Y[i,])
 
+        # for(Ni in ni:K[i,1]) {
+        #   lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
+        #
+        #   lit_ <- prod(lit)
+        #   li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
+        # }
         for(Ni in ni:K[i,1]) {
-          lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
+          lit <- 1
+          for(t in 1:T) {
+            lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
+            # print(drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1]))
+            print(paste("lit: ",as.numeric(lit)))
+          }
+          li <- li + lit*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
 
-          lit_ <- prod(lit)
-          li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
         }
         l <- l+log(li)
       }
     }
   } else { # DO APA CALCULATIONS
-
+    require(Rmpfr)
     # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
-    lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+    lamb <- Rmpfr::mpfrArray(matrix(rep(1,times=R), ncol=1), dim = c(R,1), precBits=precBits) # covariate coefficients for lambda
     B_l <- Rmpfr::mpfr(par[1], precBits=precBits) # covariates for lambda
     if(!is.null(l_s_c)) {
       lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
@@ -381,8 +411,8 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
     }
 
     # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
-    pdet <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
-    B_p <- par[length(B_l)+1] # covariates for pdet
+    pdet <- Rmpfr::mpfrArray(matrix(rep(1,times=R), ncol=1), dim = c(R,1), precBits=precBits) # covariate coefficients for lambda
+    B_p <- Rmpfr::mpfr(par[length(B_l)+1], precBits=precBits) # covariates for pdet
     if(!is.null(p_s_c)) {
       pdet <- cbind(pdet, do.call(cbind, p_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
       B_p  <- sapply(X = 1:(length(p_s_c)+1)+length(B_l), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
@@ -391,44 +421,109 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
     }
 
     Y    <- nit
-    Y_df <- nit
+    #Y_df <- nit
 
     l <- Rmpfr::mpfr(0, precBits=precBits)
     if(PARALLELIZE) {
       li <- foreach(i=1:R) %dopar% {
-        Yi_df <- Y_df[which(Y_df$site==i),]
+        # Yi_df <- Y_df[which(Y_df$site==i),]
+        # li <- Rmpfr::mpfr(0, precBits=precBits)
+        # ni <- max(Yi_df$count)
         li <- Rmpfr::mpfr(0, precBits=precBits)
-        ni <- max(Yi_df$count)
+        ni <- max(Y[i,])
 
+        # for(Ni in ni:K[i,1]) {
+        #   lit <- with(data = Yi_df, expr = drbinomAPA(x = count, size = Ni, prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits=precBits), red=reduc, precBits=precBits))
+        #
+        #   lit_ <- prod(new("mpfr",unlist(lit)))
+        #
+        #   li <- li + lit_*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits=precBits)
+        # }
+        # return(log(li))
         for(Ni in ni:K[i,1]) {
-          lit <- with(data = Yi_df, expr = drbinomAPA(x = count, size = Ni, prob = plogisAPA(sum(B_p*pdet[i,]), precBits=precBits), red=reduc, precBits=precBits))
+          lit <- 1
+          for(t in 1:T) {
+            lit <- lit*drbinomAPA(x = Y[i,t], size = Ni, prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits), red=red[i,1], precBits = precBits)
+          }
+          li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
 
-          lit_ <- prod(lit)
-
-          li <- li + lit_*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits=precBits)
         }
         return(log(li))
       }
-      l <- sum(unlist(li))
+
+      l <- sum(new("mpfr", unlist(li)))
       ###
     } else {
 
       for(i in 1:R) {
-        Yi_df <- Y_df[which(Y_df$site==i),]
+        # Yi_df <- Y_df[which(Y_df$site==i),]
+        # li <- Rmpfr::mpfr(0, precBits=precBits)
+        # ni <- max(Yi_df$count)
         li <- Rmpfr::mpfr(0, precBits=precBits)
-        ni <- max(Yi_df$count)
+        ni <- max(Y[i,])
 
+        # for(Ni in ni:K[i,1]) {
+        #   lit <- with(data = Yi_df,
+        #               expr = drbinomAPA(x = count, size = Ni,
+        #                                 prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]),
+        #                                                                precBits=precBits),
+        #                                 red=reduc, precBits=precBits))
+        #
+        #   lit_ <- prod(new("mpfr",unlist(lit)))
+        #   li <- li + lit_*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits=precBits)
+        # }
         for(Ni in ni:K[i,1]) {
-          lit <- with(data = Yi_df, expr = drbinomAPA(x = count, size = Ni, prob = plogisAPA(sum(B_p*pdet[i,]), precBits=precBits), red=reduc, precBits=precBits))
+          lit <- Rmpfr::mpfr(1,precBits=precBits)
+          for(t in 1:T) {
+            str(drbinomAPA(x = Y[i,t],
+                           size = Ni,
+                           prob = optimizeAPA::plogis_APA(
+                             x=sum(B_p*pdet[i,]), precBits = precBits),
+                           red=red[i,1],
+                           precBits = precBits))
+            class(drbinomAPA(x = Y[i,t],
+                             size = Ni,
+                             prob = optimizeAPA::plogis_APA(
+                               x=sum(B_p*pdet[i,]), precBits = precBits),
+                             red=red[i,1],
+                             precBits = precBits))
+            lit <- lit*drbinomAPA(x = Y[i,t],
+                                  size = Ni,
+                                  prob = optimizeAPA::plogis_APA(
+                                    x=sum(B_p*pdet[i,]), precBits = precBits),
+                                  red=red[i,1],
+                                  precBits = precBits)
+            # new("mpfr",unlist(drbinomAPA(x = Y[i,t],
+            #                                         size = Ni,
+            #                                         prob = optimizeAPA::plogis_APA(
+            #                                           x=sum(B_p*pdet[i,]), precBits = precBits),
+            #                                         red=red[i,1],
+            #                                         precBits = precBits)))
 
-          lit_ <- prod(lit)
-          li <- li + lit_*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits=precBits)
+            #lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
+
+            print(paste("lit: ",as.numeric(lit)))
+            # print(as.numeric(new("mpfr",unlist(drbinomAPA(x = Y[i,t],
+            #                                               size = Ni,
+            #                                               prob = optimizeAPA::plogis_APA(
+            #                                                 x=sum(B_p*pdet[i,]), precBits = precBits),
+            #                                               red=red[i,1],
+            #                                               precBits = precBits)))))
+          }
+          li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
+          #print(paste("li: ",as.numeric(li)))
         }
         l <- l+log(li)
       }
     }
   }
-  if(VERBOSE) {print(paste0("log likelihood: ",format(l)))}
+
+  if(VERBOSE) {#
+    if(!APA) print(paste0("log likelihood: ",l))
+    if(APA) {
+      print(paste0("log likelihood: ",as.numeric(l)))
+    }
+  }
   return(-1*l)
 }
 
@@ -803,6 +898,8 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' @param red    reduction factor, either a number, or a vector of reduction factors (R sites reductions).
 #' @param VERBOSE If true, prints the log likelihood to console at each optim iteration.
 #' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
+#' @param APA    If true, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.
+#' @param precBits If APA=TRUE, then this will specify the number of bits of precision.
 #' @param ...    Additional input for optim.
 #' @examples
 #' START_PARALLEL(num_cores=4)
@@ -811,7 +908,7 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' out2 <- fit_red_Nmix_closed(Y$nit, red=c(10,10,10,10,20,20,40,40), K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
-fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", APA=FALSE, precBits=128, ...) {
 
   Y_m <- nit
   row.names(Y_m) <- 1:nrow(nit)
@@ -843,8 +940,8 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
     lamb_names  <- c(lamb_names, paste0("B_l_s_",1:numCov))
   }
 
-  Y_df <- reshape2::melt(Y_m)
-  colnames(Y_df) <- c("site", "time", "count")
+  # Y_df <- reshape2::melt(Y_m)
+  # colnames(Y_df) <- c("site", "time", "count")
 
 
   if(length(red)==1) {
@@ -855,29 +952,61 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
 
   red <- matrix(red, nrow=nrow(Y_m), ncol=ncol(Y_m))
 
-  redu <- numeric(nrow(Y_df))
-  temp <- numeric(nrow(Y_df))
-  for(i in 1:nrow(Y_df)) {
-    redu[i] <- red[Y_df$site[i],Y_df$time[i]]
-    temp[i] <- reduction(x = Y_df$count[i], red = redu[i])
-  }
-  Y_df$count <- temp
-  Y_df$reduc <- redu
+  # redu <- numeric(nrow(Y_df))
+  # temp <- numeric(nrow(Y_df))
+  # for(i in 1:nrow(Y_df)) {
+  #   redu[i] <- red[Y_df$site[i],Y_df$time[i]]
+  #   temp[i] <- reduction(x = Y_df$count[i], red = redu[i])
+  # }
+  # Y_df$count <- temp
+  # Y_df$reduc <- redu
 
   red_K  <- reduction(x = matrix(K, nrow=nrow(red), ncol=ncol(red)), red = red)
 
-  opt <- optim(par      = starts,
-                fn      = red_Like_closed,
-                nit     = Y_df,
-                l_s_c   = lambda_site_covariates,
-                p_s_c   = pdet_site_covariates,
-                K       = red_K,
-                red     = red,
-                VERBOSE = VERBOSE,
-                method  = method,
-                PARALLELIZE = PARALLELIZE,
-                ...)
-  names(opt$par) <- c(lamb_names, pdet_names)
+  for(i in 1:nrow(nit)) {
+    Y_m[i,] <- reduction(nit[i,], red[i,1])
+  }
+
+  opt <- NULL
+  if(!APA) {
+    opt <- optim(par      = starts,
+                 fn       = red_Like_closed,
+                 nit      = Y_m,
+                 l_s_c    = lambda_site_covariates,
+                 p_s_c    = pdet_site_covariates,
+                 K        = red_K,
+                 red      = red,
+                 VERBOSE  = VERBOSE,
+                 method   = method,
+                 PARALLELIZE = PARALLELIZE,
+                 ...)
+    names(opt$par) <- c(lamb_names, pdet_names)
+  } else {
+    require(Rmpfr)
+    require(gmp)
+    require(optimizeAPA)
+    opt <- optim_DFP_APA(starts      = starts,
+                         func        = red_Like_closed,
+                         nit         = Y_m,
+                         l_s_c       = lambda_site_covariates,
+                         p_s_c       = pdet_site_covariates,
+                         K           = red_K,
+                         red         = red,
+                         VERBOSE     = VERBOSE,
+                         PARALLELIZE = PARALLELIZE,
+                         APA         = TRUE,
+                         precBits    = precBits,
+                         ...)
+
+    if(length(opt$x)==length(c(lamb_names, pdet_names))) {
+      rownames(opt$x) <- c(lamb_names, pdet_names)
+    } else {
+      for(i in 1:length(opt$x)) {
+        rownames(opt$x[[i]]) <- c(lamb_names, pdet_names)
+      }
+    }
+  }
+
   return(opt)
 }
 

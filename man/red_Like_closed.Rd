@@ -5,7 +5,7 @@
 \title{Internal function. Used to calculate the negative of the log likelihood.}
 \usage{
 red_Like_closed(par, nit, l_s_c, p_s_c, K, red, FUN = round,
-  VERBOSE = FALSE, PARALLELIZE = FALSE)
+  VERBOSE = FALSE, PARALLELIZE = FALSE, APA = FALSE, precBits = 64)
 }
 \arguments{
 \item{par}{Vector with two elements, log(lambda) and logis(pdet). If l_s_c is not NULL, need length(par) = length(l_s_c) + 2, for the B0...BK coefficients of lambda (B0 is the constant term coefficient).}
@@ -23,6 +23,10 @@ red_Like_closed(par, nit, l_s_c, p_s_c, K, red, FUN = round,
 \item{VERBOSE}{If true, prints the calculated log likelihood to console.}
 
 \item{PARALLELIZE}{If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
+
+\item{APA}{Default is FALSE. If true, will use arbitrary precision arithmetic in calculating the likelihood. Note that APA will be slower, however it is required for site population sizes larger than about 200. If APA = TRUE, then precBits specifies the number of bits of precision to use in the calculations.}
+
+\item{precBits}{If APA=TRUE, then precBits specifies the number of bits of precision for arbitrary precision arithmetic.}
 }
 \description{
 Internal function. Used to calculate the negative of the log likelihood.

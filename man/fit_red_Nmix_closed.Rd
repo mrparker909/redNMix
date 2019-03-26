@@ -6,7 +6,8 @@
 \usage{
 fit_red_Nmix_closed(nit, lambda_site_covariates = NULL,
   pdet_site_covariates = NULL, red, K, starts = c(1, 0),
-  VERBOSE = FALSE, PARALLELIZE = FALSE, method = "BFGS", ...)
+  VERBOSE = FALSE, PARALLELIZE = FALSE, method = "BFGS",
+  APA = FALSE, precBits = 128, ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -24,6 +25,10 @@ fit_red_Nmix_closed(nit, lambda_site_covariates = NULL,
 \item{VERBOSE}{If true, prints the log likelihood to console at each optim iteration.}
 
 \item{PARALLELIZE}{If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
+
+\item{APA}{If true, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.}
+
+\item{precBits}{If APA=TRUE, then this will specify the number of bits of precision.}
 
 \item{...}{Additional input for optim.}
 }
