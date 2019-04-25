@@ -115,14 +115,13 @@ gen_Nmix_closed <- function(num_sites,num_times,lambda,pdet) {
 
 # rounding in R rounds to nearest even number (eg 0.5 rounds to 0), this function does
 # "normal" rounding (eg 0.5 rounds to 1)
-round2_ = function(x, n=0) {
-  sgn = sign(x)
-  z = abs(x)*10^n
-  z = trunc(z + 0.5)
-  z = z/10^n
-  z*sgn
+round2 <- function(x, n=0) {
+  s <- sign(x)
+  z <- abs(x)*10^n
+  z <- trunc(z + 0.5)
+  z <- z/10^n
+  return(z*s)
 }
-round2 <- compiler::cmpfun(round2_)
 
 #' Generate a population/observation pair with the structure of an open N-mixture model
 #'
@@ -180,20 +179,6 @@ reduction <- function(x, red, FUN=round2) {
   FUN(x/red)
 }
 
-# TODO: ERROR, need drbinom_ to be function of FULL size, not REDUCED size (will also need to change everywhere that uses drbinom)
-drbinom_ <- function(x, size, prob, red, log=FALSE) {
-  # start <- (x-0.5)*red #- red/2
-  # end   <- floor(start + red)
-  start <- ceiling(x*red - red/2)-1
-  end   <- round2(x*red + red/2)-1
-
-  p <- pbinom(end, size, prob) - pbinom(start, size, prob)
-  #if(p < 0) { print(paste("drbinom < 0!", "x=",x,"size=",size, "prob=",prob, "red=",red))}
-  if(log) {
-    return(log(p))
-  }
-  return(p)
-}
 #' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
 #' takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
 #'
@@ -206,12 +191,33 @@ drbinom_ <- function(x, size, prob, red, log=FALSE) {
 #' Y <- drbinom(0:20, 20, 0.3, 10)
 #' plot(Y, xlab="Y~rBinom(N=20,p=0.3,r=10)", ylab="P[Y=y]")
 #' @export
-drbinom <- compiler::cmpfun(drbinom_)
+drbinom <- function(x, size, prob, red, log=FALSE) {
+  # start <- (x-0.5)*red #- red/2
+  # end   <- floor(start + red)
+  start <- ceiling(x*red - red/2)-1
+  end   <- round2(x*red + red/2)-1
 
-# TODO: need drbinom_ to be function of FULL size,
-# not REDUCED size (will also need to change everywhere that uses drbinom)
+  p <- pbinom(end, size, prob) - pbinom(start, size, prob)
+  #if(p < 0) { print(paste("drbinom < 0!", "x=",x,"size=",size, "prob=",prob, "red=",red))}
+  if(log) {
+    return(log(p))
+  }
+  return(p)
+}
 
-drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
+#' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
+#' takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
+#'
+#' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
+#' @param size Number of trials.
+#' @param prob Probability of success for each trial.
+#' @param red The factor r by which x has been reduced.
+#' @param precBits Number of bits of precision for arbitrary precision arithmetic.
+#' @return The probability of observing quantile \eqn{x}.
+#' @examples
+#' Y <- drbinomAPA(0:3, 20, 0.3, 10, precBits=64)
+#' @export
+drbinomAPA <- function(x, size, prob, red, precBits=128, log=FALSE) {
   if(class(prob)!="mpfr") {
     prob <- Rmpfr::mpfr(prob, precBits)
   }
@@ -245,22 +251,19 @@ pbinom_APA <- function(x, n, p, log.p=FALSE, precBits=128) {
   Rmpfr::pbetaI(q = p, shape1 = x + 1, shape2 = n - x, log.p = log.p, lower.tail = FALSE)
 }
 
-#' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
-#' takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
+
+#' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
 #'
 #' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
-#' @param size Number of trials.
-#' @param prob Probability of success for each trial.
-#' @param red The factor r by which x has been reduced.
+#' @param lambda Mean of the full count poisson distribution.
+#' @param red The factor r by which x was reduced.
 #' @param precBits Number of bits of precision for arbitrary precision arithmetic.
-#' @return The probability of observing quantile \eqn{x}.
+#' @return The probability of observing quantile \eqn{x}
 #' @examples
-#' Y <- drbinomAPA(0:20, 20, 0.3, 10, precBits=64)
+#' # probability of observing 105 from pois(lam=90)
+#' x <- drpoisAPA(x = 105, lambda = 90, precBits=64)
 #' @export
-drbinomAPA <- drbinomAPA_#compiler::cmpfun(drbinomAPA_)
-
-#' internal function
-drpoisAPA_1  <- function(x, lambda, red, precBits=128, log=FALSE) {
+drpoisAPA  <- function(x, lambda, red, precBits=128, log=FALSE) {
   # pt <- NULL
   # i <- 0
   # for(X in x) {
@@ -292,34 +295,6 @@ drpoisAPA_1  <- function(x, lambda, red, precBits=128, log=FALSE) {
   return(p)
 }
 
-#' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
-#'
-#' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
-#' @param lambda Mean of the full count poisson distribution.
-#' @param red The factor r by which x was reduced.
-#' @param precBits Number of bits of precision for arbitrary precision arithmetic.
-#' @return The probability of observing quantile \eqn{x}
-#' @examples
-#' # probability of observing 105 from pois(lam=90)
-#' x <- drpoisAPA(x = 105, lambda = 90, precBits=64)
-#' @export
-drpoisAPA <- compiler::cmpfun(drpoisAPA_1)
-
-
-#' internal function
-drpois_1  <- function(x, lambda, red, log=FALSE) {
-  # start <- x*red-red/2
-  # end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
-  start <- ceiling(x*red - red/2)-1
-  end   <- round2(x*red + red/2)-1
-
-  p <- ppois(start, lambda, lower.tail = FALSE) - ppois(end, lambda, lower.tail = FALSE) #ppois(end, lambda) - ppois(start, lambda) #sum(dpois(start:end, lambda)) #
-
-  if(log) {
-    return(log(p))
-  }
-  return(p)
-}
 
 #' Reduced poisson probability distribution function \eqn{rPoisson(x;\lambda,r)}, takes reduced quantiles (use drpois2 for full quantiles).
 #'
@@ -333,20 +308,38 @@ drpois_1  <- function(x, lambda, red, log=FALSE) {
 #' # probability of observing reduction(105, 10) from rpois(lam=90, r=10) is larger since multiple values of x map to the same value of y
 #' y <- drpois(x = reduction(105, 10), lambda = 90, red = 10)
 #'
-#' Y <- drpois(seq(1,20,1), 55, 10)
+#' Y <- drpois(seq(0,20,1), 55, 10)
 #' plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 #' @export
-drpois <- compiler::cmpfun(drpois_1)
+drpois  <- function(x, lambda, red, log=FALSE) {
+  start <- ceiling(x*red - red/2)-1
+  end   <- round2(x*red + red/2)-1
+
+  p <- ppois(start, lambda, lower.tail = FALSE) - ppois(end, lambda, lower.tail = FALSE) #ppois(end, lambda) - ppois(start, lambda) #sum(dpois(start:end, lambda)) #
+
+  if(log) { return(log(p)) }
+  return(p)
+}
 
 
 
-red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=64) {
-  # T <- length(unique(nit$time))
-  # R <- length(unique(nit$site))
+#' Used to calculate the negative of the log likelihood for closed population models.
+#' @param par Vector with two elements, log(lambda) and logis(pdet). If l_s_c is not NULL, need length(par) = length(l_s_c) + 2, for the B0...BK coefficients of lambda (B0 is the constant term coefficient).
+#' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param l_s_c list of lambda site covariates (list of vectors of length R (number of sites))
+#' @param p_s_c list of pdet site covariates (list of vectors of length R (number of sites))
+#' @param K   Upper bound on summations (input reduced count upper bound).
+#' @param red reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)
+#' @param VERBOSE If true, prints the calculated log likelihood to console.
+#' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
+#' @param APA Default is FALSE. If true, will use arbitrary precision arithmetic in calculating the likelihood. Note that APA will be slower, however it is required for site population sizes larger than about 200. If APA = TRUE, then precBits specifies the number of bits of precision to use in the calculations.
+#' @param precBits If APA=TRUE, then precBits specifies the number of bits of precision for arbitrary precision arithmetic.
+#' @export
+red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=64) {
   T <- ncol(nit)
   R <- nrow(nit)
 
-  if(!APA) {
+  if(!APA) { # NOT APA
     # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
     lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
     B_l <- par[1] # covariates for lambda
@@ -367,27 +360,13 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
       }, par=par)
     }
 
-    # Y    <- nit
-    # Y_df <- nit
     Y <- nit
 
     l <- 0
-    if(PARALLELIZE) {
+    if(PARALLELIZE) { # PARALLEL and NOT APA
       li <- foreach(i=1:R) %dopar% {
-        # Yi_df <- Y_df[which(Y_df$site==i),]
-        # li <- 0
-        # ni <- max(Yi_df$count)
         li <- 0
         ni <- max(Y[i,])
-
-        # for(Ni in ni:K[i,1]) {
-        #   lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
-        #
-        #   lit_ <- prod(lit)
-        #
-        #   li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
-        # }
-        # return(log(li))
         for(Ni in ni:K[i,1]) {
           lit <- 1
           for(t in 1:T) {
@@ -399,21 +378,11 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
       }
       l <- sum(unlist(li))
       ###
-    } else {
+    } else { # NOT PARALLEL and NOT APA:
 
       for(i in 1:R) {
-        # Yi_df <- Y_df[which(Y_df$site==i),]
-        # li <- 0
-        # ni <- max(Yi_df$count)
         li <- 0
         ni <- max(Y[i,])
-
-        # for(Ni in ni:K[i,1]) {
-        #   lit <- with(data = Yi_df, expr = drbinom(x = count, size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=reduc))
-        #
-        #   lit_ <- prod(lit)
-        #   li <- li + lit_*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
-        # }
         for(Ni in ni:K[i,1]) {
           lit <- 1
           for(t in 1:T) {
@@ -447,36 +416,17 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
       }, par=par)
     }
 
-    Y    <- nit
-    #Y_df <- nit
+    Y <- nit
 
     l <- Rmpfr::mpfr(0, precBits=precBits)
-    if(PARALLELIZE) {
+    if(PARALLELIZE) { # PARALLEL and APA
       li <- foreach(i=1:R) %dopar% {
-        # Yi_df <- Y_df[which(Y_df$site==i),]
-        # li <- Rmpfr::mpfr(0, precBits=precBits)
-        # ni <- max(Yi_df$count)
         li <- Rmpfr::mpfr(0, precBits=precBits)
         ni <- max(Y[i,])
-
-        # for(Ni in ni:K[i,1]) {
-        #   lit <- with(data = Yi_df, expr = drbinomAPA(x = count, size = Ni, prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits=precBits), red=reduc, precBits=precBits))
-        #
-        #   lit_ <- prod(new("mpfr",unlist(lit)))
-        #
-        #   li <- li + lit_*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits=precBits)
-        # }
-        # return(log(li))
         for(Ni in ni:K[i,1]) {
           lit <- Rmpfr::mpfr(1,precBits=precBits)
           for(t in 1:T) {
-            #lit <- lit*new("mpfr",unlist(drbinomAPA(x = Y[i,t], size = Ni, prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits), red=red[i,1], precBits = precBits)))
             pit <- optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits)
-            # lit <- lit*new("mpfr",drbinomAPA(x = Y[i,t],
-            #                                  size = Ni,
-            #                                  prob = pit,
-            #                                  red=red[i,1],
-            #                                  precBits = precBits))
             lit <- lit*(drbinomAPA(x = Y[i,t],
                                              size = Ni,
                                              prob = pit,
@@ -491,25 +441,10 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
 
       l <- sum(new("mpfr", unlist(li)))
       ###
-    } else {
-
+    } else { # NOT PARALLEL and APA
       for(i in 1:R) {
-        # Yi_df <- Y_df[which(Y_df$site==i),]
-        # li <- Rmpfr::mpfr(0, precBits=precBits)
-        # ni <- max(Yi_df$count)
         li <- Rmpfr::mpfr(0, precBits=precBits)
         ni <- max(Y[i,])
-
-        # for(Ni in ni:K[i,1]) {
-        #   lit <- with(data = Yi_df,
-        #               expr = drbinomAPA(x = count, size = Ni,
-        #                                 prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]),
-        #                                                                precBits=precBits),
-        #                                 red=reduc, precBits=precBits))
-        #
-        #   lit_ <- prod(new("mpfr",unlist(lit)))
-        #   li <- li + lit_*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits=precBits)
-        # }
         for(Ni in ni:K[i,1]) {
           lit <- Rmpfr::mpfr(1,precBits=precBits)
           for(t in 1:T) {
@@ -519,23 +454,15 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
                                              prob = pit,
                                              red=red[i,1],
                                              precBits = precBits))
-            # lit <- lit*new("mpfr",unlist(drbinomAPA(x = Y[i,t],
-            #                                         size = Ni,
-            #                                         prob = optimizeAPA::plogis_APA(
-            #                                           x=sum(B_p*pdet[i,]), precBits = precBits),
-            #                                         red=red[i,1],
-            #                                         precBits = precBits)))
-            #print(paste("lit:", as.numeric(lit)))
           }
           li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
-          #print(paste("li: ",as.numeric(li)))
         }
         l <- l+log(li)
       }
     }
   }
 
-  if(VERBOSE) {#
+  if(VERBOSE) {
     if(!APA) print(paste0("log likelihood: ",l))
     if(APA) {
       print(paste0("log likelihood: ",Rmpfr::formatMpfr(l)))
@@ -544,23 +471,24 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
   return(-1*l)
 }
 
-#' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par Vector with two elements, log(lambda) and logis(pdet). If l_s_c is not NULL, need length(par) = length(l_s_c) + 2, for the B0...BK coefficients of lambda (B0 is the constant term coefficient).
-#' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
-#' @param l_s_c list of lambda site covariates (list of vectors of length R (number of sites))
-#' @param p_s_c list of pdet site covariates (list of vectors of length R (number of sites))
-#' @param K   Upper bound on summations (input reduced count upper bound).
-#' @param red reduction factor matrix (R by T, with R sites/rows and T sampling occassions/columns)
-#' @param VERBOSE If true, prints the calculated log likelihood to console.
+
+#' Used to calculate the negative of the log likelihood for open population models.
+#' @param par     Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
+#' @param nit     R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param l_s_c   list of lambda site covariates (list of vectors of length R (number of sites)).
+#' @param g_s_c   list of gamma site covariates (list of vectors of length R (number of sites))
+#' @param g_t_c   list of gamma time covariates (list of vectors of length T (number of sampling occasions))
+#' @param o_s_c   list of omega site covariates (list of vectors of length R (number of sites))
+#' @param o_t_c   list of omega time covariates (list of vectors of length T (number of sampling occasions))
+#' @param p_s_c   list of pdet site covariates (list of vectors of length R (number of sites))
+#' @param p_t_c   list of pdet time covariates (list of vectors of length T (number of sampling occasions))
+#' @param K       Upper bound on summations (reduced counts upper bound).
+#' @param red     Reduction factor
+#' @param VERBOSE If true, prints the log likelihood to console.
 #' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
-#' @param APA Default is FALSE. If true, will use arbitrary precision arithmetic in calculating the likelihood. Note that APA will be slower, however it is required for site population sizes larger than about 200. If APA = TRUE, then precBits specifies the number of bits of precision to use in the calculations.
-#' @param precBits If APA=TRUE, then precBits specifies the number of bits of precision for arbitrary precision arithmetic.
+#' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
 #' @export
-red_Like_closed <- compiler::cmpfun(red_Like_closed_)
-
-
-
-red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE) {
   T <- ncol(nit)
   R <- nrow(nit)
 
@@ -844,23 +772,6 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p
   return(-1*ll)
 }
 
-#' Internal function. Used to calculate the negative of the log likelihood.
-#' @param par     Vector with four elements, log(lambda), log(gamma), logis(omega), and logis(pdet).
-#' @param nit     R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
-#' @param l_s_c   list of lambda site covariates (list of vectors of length R (number of sites)).
-#' @param g_s_c   list of gamma site covariates (list of vectors of length R (number of sites))
-#' @param g_t_c   list of gamma time covariates (list of vectors of length T (number of sampling occasions))
-#' @param o_s_c   list of omega site covariates (list of vectors of length R (number of sites))
-#' @param o_t_c   list of omega time covariates (list of vectors of length T (number of sampling occasions))
-#' @param p_s_c   list of pdet site covariates (list of vectors of length R (number of sites))
-#' @param p_t_c   list of pdet time covariates (list of vectors of length T (number of sampling occasions))
-#' @param K       Upper bound on summations (reduced counts upper bound).
-#' @param red     Reduction factor
-#' @param VERBOSE If true, prints the log likelihood to console.
-#' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
-#' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
-#' @export
-red_Like_open <- compiler::cmpfun(red_Like_open_)
 
 #' Not Vectorized.
 tp_jk <- function(j,k,omeg,gamm,red) {
