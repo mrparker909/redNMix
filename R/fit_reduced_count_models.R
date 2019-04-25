@@ -180,12 +180,14 @@ reduction <- function(x, red, FUN=round2) {
   FUN(x/red)
 }
 
-
+# TODO: ERROR, need drbinom_ to be function of FULL size, not REDUCED size (will also need to change everywhere that uses drbinom)
 drbinom_ <- function(x, size, prob, red, log=FALSE) {
-  start <- x*red - red/2
-  end   <- start + red
+  # start <- (x-0.5)*red #- red/2
+  # end   <- floor(start + red)
+  start <- ceiling(x*red - red/2)-1
+  end   <- round2(x*red + red/2)-1
 
-  p <- pbinom(end, size*red, prob) - pbinom(start, size*red, prob)
+  p <- pbinom(end, size, prob) - pbinom(start, size, prob)
   #if(p < 0) { print(paste("drbinom < 0!", "x=",x,"size=",size, "prob=",prob, "red=",red))}
   if(log) {
     return(log(p))
@@ -196,7 +198,7 @@ drbinom_ <- function(x, size, prob, red, log=FALSE) {
 #' takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
 #'
 #' @param x Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).
-#' @param size Number of trials.
+#' @param size Number of trials (full count size).
 #' @param prob Probability of success for each trial.
 #' @param red The factor r by which x has been reduced.
 #' @return The probability of observing quantile \eqn{x}.
@@ -206,30 +208,43 @@ drbinom_ <- function(x, size, prob, red, log=FALSE) {
 #' @export
 drbinom <- compiler::cmpfun(drbinom_)
 
-drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
-  require(Rmpfr)
+# TODO: need drbinom_ to be function of FULL size,
+# not REDUCED size (will also need to change everywhere that uses drbinom)
 
-  pt <- NULL
+drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
+  if(class(prob)!="mpfr") {
+    prob <- Rmpfr::mpfr(prob, precBits)
+  }
+  pt <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(1, length(x)))
   i <- 0
   for(X in x) {
-    i <- i + 1
-    start <- ceiling(X*red - red/2)
+    i <- i+1
+    if(class(X)!="mpfr") {
+      X <- Rmpfr::mpfr(X, precBits)
+    }
+    start <- ceiling(X*red - red/2)-1
     end   <- round2(X*red + red/2)-1
 
-    ptj <- NULL
-    j <- 0
-    for(Y in (start):(end)) {
-      j <- j+1
-      ptj[[j]] <- optimizeAPA::dbinom_APA(Y, size*red, prob=prob, precBits=precBits)
-    }
-    pt[i] <- sum(new("mpfr", unlist(ptj)))
+    pt[i] <- pbinom_APA(x = end, n = size, p = prob, precBits=precBits) - pbinom_APA(x = start, n = size, p = prob, precBits = precBits)
   }
-  p <- new("mpfr", unlist(pt))
   if(log) {
-    return(log(p))
+    return(log(pt))
   }
-  return(p)
+  return(pt)
 }
+
+pbinom_ <- function(x, n, p, log.p=FALSE) {
+  if(x > n) return(1)
+  if(x < 0) return(0)
+  pbeta(q = p, shape1 = x + 1, shape2 = n - x, log.p = log.p, lower.tail = FALSE)
+}
+
+pbinom_APA <- function(x, n, p, log.p=FALSE, precBits=128) {
+  if(x > n) return(Rmpfr::mpfr(1, precBits))
+  if(x < 0) return(Rmpfr::mpfr(0, precBits))
+  Rmpfr::pbetaI(q = p, shape1 = x + 1, shape2 = n - x, log.p = log.p, lower.tail = FALSE)
+}
+
 #' Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))},
 #' takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
 #'
@@ -242,21 +257,33 @@ drbinomAPA_ <- function(x, size, prob, red, precBits=128, log=FALSE) {
 #' @examples
 #' Y <- drbinomAPA(0:20, 20, 0.3, 10, precBits=64)
 #' @export
-drbinomAPA <- Vectorize(compiler::cmpfun(drbinomAPA_))
-
+drbinomAPA <- drbinomAPA_#compiler::cmpfun(drbinomAPA_)
 
 #' internal function
 drpoisAPA_1  <- function(x, lambda, red, precBits=128, log=FALSE) {
-  require(Rmpfr)
-
+  # pt <- NULL
+  # i <- 0
+  # for(X in x) {
+  #   i <- i + 1
+  #   start <- as.integer(X*red - red/2) +1
+  #   end   <- (start + red)-1
+  #   temp  <- optimizeAPA::dpois_APA((start):(end), lambda, precBits=precBits)
+  #   pt[i] <- sum(new("mpfr", unlist(temp)))
+  # }
   pt <- NULL
   i <- 0
   for(X in x) {
     i <- i + 1
-    start <- as.integer(X*red - red/2) +1
-    end   <- (start + red)-1
-    temp  <- optimizeAPA::dpois_APA((start):(end), lambda, precBits=precBits)
-    pt[i] <- sum(new("mpfr", unlist(temp)))
+    start <- ceiling(X*red - red/2)
+    end   <- round2(X*red + red/2)-1
+
+    ptj <- NULL
+    j <- 0
+    for(Y in (start):(end)) {
+      j <- j+1
+      ptj[[j]] <- optimizeAPA::dpois_APA(Y, lambda, precBits = precBits)
+    }
+    pt[i] <- sum(new("mpfr", unlist(ptj)))
   }
   p <- new("mpfr", unlist(pt))
   if(log) {
@@ -281,8 +308,10 @@ drpoisAPA <- compiler::cmpfun(drpoisAPA_1)
 
 #' internal function
 drpois_1  <- function(x, lambda, red, log=FALSE) {
-  start <- x*red-red/2
-  end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
+  # start <- x*red-red/2
+  # end   <- start + red # reduction(x,red, FUN=round2)*red+red/2
+  start <- ceiling(x*red - red/2)-1
+  end   <- round2(x*red + red/2)-1
 
   p <- ppois(start, lambda, lower.tail = FALSE) - ppois(end, lambda, lower.tail = FALSE) #ppois(end, lambda) - ppois(start, lambda) #sum(dpois(start:end, lambda)) #
 
@@ -362,7 +391,7 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
         for(Ni in ni:K[i,1]) {
           lit <- 1
           for(t in 1:T) {
-            lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
+            lit <- lit*drbinom(x = Y[i,t], size = Ni*red[i,1], prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
           }
           li <- li + lit*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
         }
@@ -388,16 +417,16 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
         for(Ni in ni:K[i,1]) {
           lit <- 1
           for(t in 1:T) {
-            lit <- lit*drbinom(x = Y[i,t], size = Ni, prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
+            lit <- lit*drbinom(x = Y[i,t], size = Ni*red[i,1], prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
+            #print(paste("lit:", as.numeric(lit)))
           }
           li <- li + lit*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
-
+          #print(paste("li: ",as.numeric(li)))
         }
         l <- l+log(li)
       }
     }
   } else { # DO APA CALCULATIONS
-    require(Rmpfr)
     # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
     lamb <- Rmpfr::mpfrArray(matrix(rep(1,times=R), ncol=1), dim = c(R,1), precBits=precBits) # covariate coefficients for lambda
     B_l <- Rmpfr::mpfr(par[1], precBits=precBits) # covariates for lambda
@@ -439,9 +468,20 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
         # }
         # return(log(li))
         for(Ni in ni:K[i,1]) {
-          lit <- 1
+          lit <- Rmpfr::mpfr(1,precBits=precBits)
           for(t in 1:T) {
-            lit <- lit*new("mpfr",unlist(drbinomAPA(x = Y[i,t], size = Ni, prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits), red=red[i,1], precBits = precBits)))
+            #lit <- lit*new("mpfr",unlist(drbinomAPA(x = Y[i,t], size = Ni, prob = optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits), red=red[i,1], precBits = precBits)))
+            pit <- optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits)
+            # lit <- lit*new("mpfr",drbinomAPA(x = Y[i,t],
+            #                                  size = Ni,
+            #                                  prob = pit,
+            #                                  red=red[i,1],
+            #                                  precBits = precBits))
+            lit <- lit*(drbinomAPA(x = Y[i,t],
+                                             size = Ni,
+                                             prob = pit,
+                                             red=red[i,1],
+                                             precBits = precBits))
           }
           li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
 
@@ -473,13 +513,19 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
         for(Ni in ni:K[i,1]) {
           lit <- Rmpfr::mpfr(1,precBits=precBits)
           for(t in 1:T) {
-            lit <- lit*new("mpfr",unlist(drbinomAPA(x = Y[i,t],
-                                                    size = Ni,
-                                                    prob = optimizeAPA::plogis_APA(
-                                                      x=sum(B_p*pdet[i,]), precBits = precBits),
-                                                    red=red[i,1],
-                                                    precBits = precBits)))
-
+            pit <- optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits)
+            lit <- lit*(drbinomAPA(x = Y[i,t],
+                                             size = Ni,
+                                             prob = pit,
+                                             red=red[i,1],
+                                             precBits = precBits))
+            # lit <- lit*new("mpfr",unlist(drbinomAPA(x = Y[i,t],
+            #                                         size = Ni,
+            #                                         prob = optimizeAPA::plogis_APA(
+            #                                           x=sum(B_p*pdet[i,]), precBits = precBits),
+            #                                         red=red[i,1],
+            #                                         precBits = precBits)))
+            #print(paste("lit:", as.numeric(lit)))
           }
           li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
           #print(paste("li: ",as.numeric(li)))
@@ -492,7 +538,7 @@ red_Like_closed_ <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=
   if(VERBOSE) {#
     if(!APA) print(paste0("log likelihood: ",l))
     if(APA) {
-      print(paste0("log likelihood: ",as.numeric(l)))
+      print(paste0("log likelihood: ",Rmpfr::formatMpfr(l)))
     }
   }
   return(-1*l)
@@ -775,7 +821,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p
     # loop backwards over times t, stopping at t==2
     for(t in T:2) {
       # size takes possible value of N (0 to K) at time t (for t > 1)
-      g1_t <- drbinom(x = Y[i,t], size = (0:K), prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,t])
+      g1_t <- drbinom(x = Y[i,t], size = (0:K)*red[i,1], prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,t])
       g1_t_star <- g1_t * g_star
 
       # update g_star
@@ -783,7 +829,7 @@ red_Like_open_ <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p
     }
 
     # size takes possible values of N (0 to K) at time t==1
-    g1 <- drbinom(x = Y[i,1], size = 0:K, prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,1])
+    g1 <- drbinom(x = Y[i,1], size = (0:K)*red[i,1], prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,1])
     g2 <- drpois(x = 0:K, lambda = exp(sum(lamb[i,] * B_l)), red = red[i,1])
 
 
@@ -819,7 +865,7 @@ red_Like_open <- compiler::cmpfun(red_Like_open_)
 #' Not Vectorized.
 tp_jk <- function(j,k,omeg,gamm,red) {
   p  <- 0
-  rb <- drbinom(x = 0:min(j,k), size = j, prob = omeg, red = red)
+  rb <- drbinom(x = 0:min(j,k), size = j*red, prob = omeg, red = red)
   rp <- drpois(x = k-0:min(j,k), lambda = gamm, red = red)
 
   p <- sum(rb * rp)
@@ -827,13 +873,11 @@ tp_jk <- function(j,k,omeg,gamm,red) {
   return(p)
 }
 
-tp_jk_VV <- Vectorize(tp_jk, vectorize.args = c("j", "k"))
-
 #' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
 tp_jk_V_ <- function(j_vec,k_vec,omeg,gamm,red) {
 
   p <- mapply(FUN = function(j,k,omeg,gamm,red) {
-    rb <- drbinom(x = 0:min(j,k), size = j, prob = omeg, red = red)
+    rb <- drbinom(x = 0:min(j,k), size = j*red, prob = omeg, red = red)
     rp <- drpois_1(x = k-0:min(j,k), lambda = gamm, red = red)
 
     return(sum(rb * rp))
@@ -871,6 +915,7 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
 #' @param APA    If true, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.
 #' @param precBits If APA=TRUE, then this will specify the number of bits of precision.
+#' @param tolerance Only used if APA=FALSE (so not using precBits), specifies tolerance for convergence (defulat is 10^-6).
 #' @param ...    Additional input for optim.
 #' @examples
 #' START_PARALLEL(num_cores=4)
@@ -879,7 +924,7 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' out2 <- fit_red_Nmix_closed(Y$nit, red=c(10,10,10,10,20,20,40,40), K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
-fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", APA=FALSE, precBits=128, ...) {
+fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", APA=FALSE, precBits=128, tolerance=10^-6, ...) {
 
   Y_m <- nit
   row.names(Y_m) <- 1:nrow(nit)
@@ -940,23 +985,44 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
 
   opt <- NULL
   if(!APA) {
-    opt <- optim(par      = starts,
-                 fn       = red_Like_closed,
-                 nit      = Y_m,
-                 l_s_c    = lambda_site_covariates,
-                 p_s_c    = pdet_site_covariates,
-                 K        = red_K,
-                 red      = red,
-                 VERBOSE  = VERBOSE,
-                 method   = method,
-                 PARALLELIZE = PARALLELIZE,
-                 ...)
-    names(opt$par) <- c(lamb_names, pdet_names)
+    if(method=="DFP") {
+      opt <- optimizeAPA::optim_DFP_NAPA(starts     = starts,
+                           func        = red_Like_closed,
+                           nit         = Y_m,
+                           l_s_c       = lambda_site_covariates,
+                           p_s_c       = pdet_site_covariates,
+                           K           = red_K,
+                           red         = red,
+                           VERBOSE     = VERBOSE,
+                           PARALLELIZE = PARALLELIZE,
+                           APA         = FALSE,
+                           tolerance   = tolerance,
+                           ...)
+
+      if(length(opt$x)==length(c(lamb_names, pdet_names))) {
+        rownames(opt$x) <- c(lamb_names, pdet_names)
+      } else {
+        for(i in 1:length(opt$x)) {
+          rownames(opt$x[[i]]) <- c(lamb_names, pdet_names)
+        }
+      }
+    } else {
+      opt <- optim(par      = starts,
+                   fn       = red_Like_closed,
+                   nit      = Y_m,
+                   l_s_c    = lambda_site_covariates,
+                   p_s_c    = pdet_site_covariates,
+                   K        = red_K,
+                   red      = red,
+                   VERBOSE  = VERBOSE,
+                   method   = method,
+                   PARALLELIZE = PARALLELIZE,
+                   control = list(reltol=tolerance),
+                   ...)
+      names(opt$par) <- c(lamb_names, pdet_names)
+    }
   } else {
-    require(Rmpfr)
-    require(gmp)
-    require(optimizeAPA)
-    opt <- optim_DFP_APA(starts      = starts,
+    opt <- optimizeAPA::optim_DFP_APA(starts      = starts,
                          func        = red_Like_closed,
                          nit         = Y_m,
                          l_s_c       = lambda_site_covariates,
@@ -985,16 +1051,13 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
 #' @param num_cores Number of cores to use for parallel processing.
 #' @export
 START_PARALLEL <- function(num_cores) {
-  require(doParallel)
-  require(foreach)
-  registerDoParallel(cores=num_cores)
+  doParallel::registerDoParallel(cores=num_cores)
 }
 
 #' Used to end parallel computing.
 #' @export
 END_PARALLEL <- function() {
-  require(doParallel)
-  stopImplicitCluster()
+  doParallel::stopImplicitCluster()
 }
 
 #' Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.
