@@ -8,8 +8,8 @@ fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
   gamma_site_covariates = NULL, omega_site_covariates = NULL,
   pdet_site_covariates = NULL, gamma_time_covariates = NULL,
   omega_time_covariates = NULL, pdet_time_covariates = NULL, red, K,
-  starts = NULL, VERBOSE = FALSE, PARALLELIZE = FALSE,
-  method = "BFGS", ...)
+  starts = NULL, VERBOSE = FALSE, PARALLELIZE = FALSE, APA = FALSE,
+  precBits = 128, tolerance = 10^-6, method = "BFGS", ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -37,6 +37,12 @@ fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
 \item{VERBOSE}{If TRUE, prints the log likelihood to console at each optim iteration.}
 
 \item{PARALLELIZE}{If TRUE, calculation will be split over threads by sites and times. This will not improve computation time if there are no site or time covariates. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
+
+\item{APA}{If true, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.}
+
+\item{precBits}{If APA=TRUE, then this will specify the number of bits of precision.}
+
+\item{tolerance}{specifies tolerance for convergence (defulat is 10^-6), all components of estimated gradient must be less than tolerance for convergence. If APA=TRUE, then tolerance can be made very small (eg 10^-20) using: tolerance=Rmpfr::mpfr(10^-20, precBits=128). NOTE: currently tolerance is only used if method="DFP".}
 
 \item{...}{Additional input for optim.}
 }

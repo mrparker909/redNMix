@@ -1,7 +1,8 @@
 context("Testing APA and NAPA Distributions")
 
 test_that("drbinom_ and drbinomAPA_", {
-  expect_equal(drbinom(x=1:5, size=5, prob=0.5, red=1, log=FALSE),dbinom(x=1:5, size=5, prob=0.5, log=FALSE))
+  expect_equal(drbinom(x=0:5, size=5, prob=0.5, red=1, log=FALSE),dbinom(x=0:5, size=5, prob=0.5, log=FALSE))
+  expect_equal(drbinom(x=5, size=0:10, prob=0.5, red=1, log=FALSE),dbinom(x=5, size=0:10, prob=0.5, log=FALSE))
   expect_equal(drbinom(x=1:5, size=5, prob=0.5, red=1, log=FALSE),as.numeric(drbinomAPA(x=1:5, size=5, prob=0.5, red=1, log=FALSE, precBits=53)))
 
   # NAPA vs base R
@@ -67,6 +68,7 @@ test_that("drbinom_ and drbinomAPA_", {
 
 test_that("drpois and drpoisAPA", {
   expect_equal(drpois(x=0:15, lambda=5, red=1, log=FALSE), dpois(x=0:15, lambda=5, log=FALSE))
+  expect_equal(drpois(x=5, lambda=0:10, red=1, log=FALSE), dpois(x=5, lambda=0:10, log=FALSE))
   expect_equal(drpois(x=0:15, lambda=5, red=1, log=FALSE), as.numeric(drpoisAPA(x=0:15, lambda=5, red=1, log=FALSE)))
 
   # NAPA vs base R

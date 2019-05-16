@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{red_Like_open}
 \alias{red_Like_open}
-\title{Internal function. Used to calculate the negative of the log likelihood.}
+\title{Used to calculate the negative of the log likelihood for open population models.}
 \usage{
 red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K,
   red, VERBOSE = FALSE, PARALLELIZE = FALSE)
@@ -33,9 +33,13 @@ red_Like_open(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K,
 \item{VERBOSE}{If true, prints the log likelihood to console.}
 
 \item{PARALLELIZE}{If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
+
+\item{APA}{Default is FALSE. If TRUE, will use arbitrary precision arithmetic in calculating the likelihood. Note that APA will be slower, however it is required for site population sizes larger than about 200. If APA = TRUE, then precBits specifies the number of bits of precision to use in the calculations.}
+
+\item{precBits}{If APA=TRUE, then precBits specifies the number of bits of precision for arbitrary precision arithmetic.}
 }
 \description{
-Internal function. Used to calculate the negative of the log likelihood.
+Used to calculate the negative of the log likelihood for open population models.
 }
 \details{
 Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.

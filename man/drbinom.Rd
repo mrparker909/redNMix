@@ -10,7 +10,7 @@ drbinom(x, size, prob, red, log = FALSE)
 \arguments{
 \item{x}{Reduced count quantile (alternatively input reduction(x,r) if x is a full count quantile).}
 
-\item{size}{Number of trials.}
+\item{size}{Number of trials (full count size).}
 
 \item{prob}{Probability of success for each trial.}
 

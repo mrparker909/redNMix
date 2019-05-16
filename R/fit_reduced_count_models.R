@@ -1,4 +1,3 @@
-
 #' Find the Most Common Divisor of a data set
 #' @param nit Full counts
 #'
@@ -116,11 +115,8 @@ gen_Nmix_closed <- function(num_sites,num_times,lambda,pdet) {
 # rounding in R rounds to nearest even number (eg 0.5 rounds to 0), this function does
 # "normal" rounding (eg 0.5 rounds to 1)
 round2 <- function(x, n=0) {
-  s <- sign(x)
-  z <- abs(x)*10^n
-  z <- trunc(z + 0.5)
-  z <- z/10^n
-  return(z*s)
+  z <- sign(x)*trunc(abs(x)*10^n + 0.5)/10^n
+  return(z)
 }
 
 #' Generate a population/observation pair with the structure of an open N-mixture model
@@ -221,18 +217,34 @@ drbinomAPA <- function(x, size, prob, red, precBits=128, log=FALSE) {
   if(class(prob)!="mpfr") {
     prob <- Rmpfr::mpfr(prob, precBits)
   }
-  pt <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(1, length(x)))
+  if(length(x)!=length(size)) {
+    if(length(x) < length(size)) {
+      x <- rep(x,length(size))
+    } else {
+      size <- rep(size, length(x))
+    }
+  }
+
+  size0 <- which(size==0)
+
+  pt <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(length(x),1))
+
   i <- 0
   for(X in x) {
     i <- i+1
-    if(class(X)!="mpfr") {
-      X <- Rmpfr::mpfr(X, precBits)
-    }
-    start <- ceiling(X*red - red/2)-1
-    end   <- round2(X*red + red/2)-1
+    # if(class(X)!="mpfr") {
+    #   X <- Rmpfr::mpfr(X, precBits)
+    # }
+    start <- Rmpfr::pmax(0,ceiling(X*red - red/2)-1)
+    end   <- Rmpfr::pmin(size[i],round2(X*red + red/2)-1)
 
-    pt[i] <- pbinom_APA(x = end, n = size, p = prob, precBits=precBits) - pbinom_APA(x = start, n = size, p = prob, precBits = precBits)
+    if(start==0 & end < red) {
+      pt[i] <- pbinom_APA(x = end, n = size[i], p = prob, precBits=precBits)
+    } else {
+      pt[i] <- pbinom_APA(x = end, n = size[i], p = prob, precBits=precBits) - pbinom_APA(x = start, n = size[i], p = prob, precBits = precBits)
+    }
   }
+  pt[size0] <- 0
   if(log) {
     return(log(pt))
   }
@@ -240,15 +252,30 @@ drbinomAPA <- function(x, size, prob, red, precBits=128, log=FALSE) {
 }
 
 pbinom_ <- function(x, n, p, log.p=FALSE) {
-  if(x > n) return(1)
-  if(x < 0) return(0)
-  pbeta(q = p, shape1 = x + 1, shape2 = n - x, log.p = log.p, lower.tail = FALSE)
+  result <- array(0, dim=c(1, length(n)))
+  i <- 0
+  for(N in n) {
+    i <- i+1
+    if(x > N) result[i] <- 1
+    if(x < 0) result[i] <- 0
+    result[i] <- pbeta(q = p, shape1 = x + 1, shape2 = N - x, log.p = log.p, lower.tail = FALSE)
+  }
+
+  return(result)
 }
 
 pbinom_APA <- function(x, n, p, log.p=FALSE, precBits=128) {
-  if(x > n) return(Rmpfr::mpfr(1, precBits))
-  if(x < 0) return(Rmpfr::mpfr(0, precBits))
-  Rmpfr::pbetaI(q = p, shape1 = x + 1, shape2 = n - x, log.p = log.p, lower.tail = FALSE)
+  result <- Rmpfr::mpfrArray(0, precBits = precBits, dim=c(1, length(n)))
+  i <- 0
+  for(N in n) {
+    i <- i+1
+    if(x > N)      result[i] <- Rmpfr::mpfr(1, precBits)
+    else if(x < 0) result[i] <- Rmpfr::mpfr(0, precBits) else {
+      result[i] <- Rmpfr::pbetaI(q = p, shape1 = x + 1, shape2 = N - x, log.p = log.p, lower.tail = FALSE, precBits = precBits)
+    }
+  }
+
+  return(result)
 }
 
 
@@ -286,7 +313,7 @@ drpoisAPA  <- function(x, lambda, red, precBits=128, log=FALSE) {
       j <- j+1
       ptj[[j]] <- optimizeAPA::dpois_APA(Y, lambda, precBits = precBits)
     }
-    pt[i] <- sum(new("mpfr", unlist(ptj)))
+    pt[i] <- sum(methods::new("mpfr", unlist(ptj)))
   }
   p <- new("mpfr", unlist(pt))
   if(log) {
@@ -486,289 +513,590 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
 #' @param red     Reduction factor
 #' @param VERBOSE If true, prints the log likelihood to console.
 #' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
+#' @param APA Default is FALSE. If TRUE, will use arbitrary precision arithmetic in calculating the likelihood. Note that APA will be slower, however it is required for site population sizes larger than about 200. If APA = TRUE, then precBits specifies the number of bits of precision to use in the calculations.
+#' @param precBits If APA=TRUE, then precBits specifies the number of bits of precision for arbitrary precision arithmetic.
 #' @details Note that this function is adapted from the negative log likelihood function from the unmarked package, and uses the recursive method of computation described in Web Appendix A of Dail and Madsen 2011: Models for Estimating Abundance from Repeated Counts of an Open Metapopulation, published in Biometrics volume 67, issue 2.
 #' @export
-red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE) {
+red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128) {
   T <- ncol(nit)
   R <- nrow(nit)
 
-  # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
-  lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
-  B_l <- par[1] # covariates for lambda
-  if(!is.null(l_s_c)) {
-    lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+  if(!APA) { # NOT APA
+    # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
+    lamb <- matrix(rep(1,times=R),ncol=1) # covariate coefficients for lambda
+    B_l <- par[1] # covariates for lambda
+    if(!is.null(l_s_c)) {
+      lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
 
-    B_l <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
-      par[X]
-    }, par=par)
-  }
+      B_l <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        par[X]
+      }, par=par)
+    }
 
-  # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
-  gamm <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for gamma
-  B_g <- par[length(B_l)+1] # covariates for gamma
-  if(!is.null(g_s_c)) {
-    gamm <- cbind(gamm, do.call(cbind, g_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+    # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
+    gamm <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for gamma
+    B_g <- par[length(B_l)+1] # covariates for gamma
+    if(!is.null(g_s_c)) {
+      gamm <- cbind(gamm, do.call(cbind, g_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
 
-    B_g <- sapply(X = 1:(length(g_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
-      par[length(B_l)+X]
-    }, par=par)
-  }
+      B_g <- sapply(X = 1:(length(g_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        par[length(B_l)+X]
+      }, par=par)
+    }
 
-  # extract gamma estimates from par, setup gamma covariate matrix gamt, and covariate vector B_gt
-  gamt <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for gamma
-  B_gt <- NULL # covariates for gamma
-  if(!is.null(g_t_c)) {
-    gamt <- do.call(cbind, g_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
-    #gamt <- rbind(gamt,rep(0, times=length(g_t_c)))
+    # extract gamma estimates from par, setup gamma covariate matrix gamt, and covariate vector B_gt
+    gamt <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for gamma
+    B_gt <- NULL # covariates for gamma
+    if(!is.null(g_t_c)) {
+      gamt <- do.call(cbind, g_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+      #gamt <- rbind(gamt,rep(0, times=length(g_t_c)))
 
-    B_gt <- sapply(X = 1:length(g_t_c), FUN = function(X,par) { # one coeff per covariate
-      par[length(B_l)+length(B_g)+X]
-    }, par=par)
-  }
+      B_gt <- sapply(X = 1:length(g_t_c), FUN = function(X,par) { # one coeff per covariate
+        par[length(B_l)+length(B_g)+X]
+      }, par=par)
+    }
 
-  # extract omega estimates from par, setup omega covariate matrix omeg, and covariate vector B_o
-  omeg <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for omega
-  B_o <- par[length(B_l)+length(B_g)+length(B_gt)+1] # covariates for omega
-  if(!is.null(o_s_c)) {
-    omeg <- cbind(omeg, do.call(cbind, o_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+    # extract omega estimates from par, setup omega covariate matrix omeg, and covariate vector B_o
+    omeg <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for omega
+    B_o <- par[length(B_l)+length(B_g)+length(B_gt)+1] # covariates for omega
+    if(!is.null(o_s_c)) {
+      omeg <- cbind(omeg, do.call(cbind, o_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
 
-    B_o <- sapply(X = 1:(length(o_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
-      par[length(B_l)+length(B_g)+length(B_gt)+X]
-    }, par=par)
-  }
+      B_o <- sapply(X = 1:(length(o_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        par[length(B_l)+length(B_g)+length(B_gt)+X]
+      }, par=par)
+    }
 
-  # extract omega estimates from par, setup omega covariate matrix omet, and covariate vector B_ot
-  omet <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for omega
-  B_ot <- NULL # covariates for omega
-  if(!is.null(o_t_c)) {
-    omet <- do.call(cbind, o_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+    # extract omega estimates from par, setup omega covariate matrix omet, and covariate vector B_ot
+    omet <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for omega
+    B_ot <- NULL # covariates for omega
+    if(!is.null(o_t_c)) {
+      omet <- do.call(cbind, o_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
 
-    B_ot <- sapply(X = 1:length(o_t_c), FUN = function(X,par) { # one coeff per covariate
-      par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+X]
-    }, par=par)
-  }
+      B_ot <- sapply(X = 1:length(o_t_c), FUN = function(X,par) { # one coeff per covariate
+        par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+X]
+      }, par=par)
+    }
 
-  # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
-  pdet <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for pdet
-  B_p <- par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+1] # covariates for pdet
-  if(!is.null(p_s_c)) {
-    pdet <- cbind(pdet, do.call(cbind, p_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+    # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
+    pdet <- matrix(rep(1,times=R),ncol=1) # site covariate coefficients for pdet
+    B_p <- par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+1] # covariates for pdet
+    if(!is.null(p_s_c)) {
+      pdet <- cbind(pdet, do.call(cbind, p_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
 
-    B_p <- sapply(X = 1:(length(p_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
-      par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+X]
-    }, par=par)
-  }
-
-
-  # extract pdet estimates from par, setup pdet covariate matrix pt, and covariate vector B_pt
-  pt   <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for pdet
-  B_pt <- NULL # covariates for pdet
-  if(!is.null(p_t_c)) {
-    pt   <- do.call(cbind, p_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
-
-    B_pt <- sapply(X = 1:length(p_t_c), FUN = function(X,par) { # one coeff per covariate
-      par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+length(B_p)+X]
-    }, par=par)
-  }
+      B_p <- sapply(X = 1:(length(p_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+X]
+      }, par=par)
+    }
 
 
-  Y <- nit
+    # extract pdet estimates from par, setup pdet covariate matrix pt, and covariate vector B_pt
+    pt   <- matrix(rep(0,times=T),ncol=1) # time covariate coefficients for pdet
+    B_pt <- NULL # covariates for pdet
+    if(!is.null(p_t_c)) {
+      pt   <- do.call(cbind, p_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
 
-  g1_t_star <- list()
-  g1_t      <- list()
-  g1        <- list()
-  g2        <- list()
-  g_star    <- list()
-  g3        <- vector(length = R, mode = "list")#list()
-  g3_temp   <- list()
+      B_pt <- sapply(X = 1:length(p_t_c), FUN = function(X,par) { # one coeff per covariate
+        par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+length(B_p)+X]
+      }, par=par)
+    }
 
-  if(PARALLELIZE) {
-    if(!is.null(g_t_c) | !is.null(o_t_c)) { # TIME DEPENDENT
-      if(!is.null(g_s_c) | !is.null(o_s_c) | var(as.vector(red))!=0) { # SITE DEPENDENT
-        g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach")) %:%
-          foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
-            tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-            if(is.null(o_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
-            else if(is.null(g_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
-            else tp_MAT(M = tempMat <- tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+
+    Y <- nit
+
+    g1_t_star <- list()
+    g1_t      <- list()
+    g1        <- list()
+    g2        <- list()
+    g_star    <- list()
+    g3        <- vector(length = R, mode = "list")#list()
+    g3_temp   <- list()
+
+    if(PARALLELIZE) {
+      if(!is.null(g_t_c) | !is.null(o_t_c)) { # TIME DEPENDENT
+        if(!is.null(g_s_c) | !is.null(o_s_c) | var(as.vector(red))!=0) { # SITE DEPENDENT
+          g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach")) %:%
+            foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
+              tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+              if(is.null(o_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+              else if(is.null(g_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
+              else tempMat <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE)
+              return(tempMat)
+            }
+          for(i in 1:R) {
+            g3[[i]]<- g3_temp[[i]]
+          }
+        } else {# NOT SITE DEPENDENT
+          g3_temp <- foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
+            tempMat        <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
+            if(is.null(o_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=TRUE)
+            else if(is.null(g_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[1,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=TRUE)
+            else tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=TRUE)
             return(tempMat)
           }
-        for(i in 1:R) {
-          g3[[i]]<- g3_temp[[i]]
+          for(i in 1:R) {
+            for(t in 1:T) {
+              g3[[i]][[t]] <- g3_temp[[t]]
+            }
+          }
         }
-      } else {# NOT SITE DEPENDENT
-        g3_temp <- foreach(t=1:T, .packages = c("redNMix","foreach")) %dopar% {
+      } else {  # NOT TIME DEPENDENT
+        g3_temp <- foreach(i=1:R, .packages=c("redNMix","foreach")) %dopar% {
           tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-          if(is.null(o_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=TRUE)
-          else if(is.null(g_t_c)) tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[1,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=TRUE)
-          else tempMat <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=TRUE)
-          return(tempMat)
+          tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
         }
         for(i in 1:R) {
           for(t in 1:T) {
-            g3[[i]][[t]] <- g3_temp[[t]]
+            g3[[i]][[t]] <- g3_temp[[i]]
           }
         }
       }
-    } else {  # NOT TIME DEPENDENT
-      g3_temp <- foreach(i=1:R, .packages=c("redNMix","foreach")) %dopar% {
-        tempMat        <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-        tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE)
-      }
-      for(i in 1:R) {
-        for(t in 1:T) {
-          g3[[i]][[t]] <- g3_temp[[i]]
-        }
-      }
-    }
-  } else { # NOT PARALLELIZED
-    g3_temp <- list()
-    if(var(as.vector(red))==0) { # all reduction factors are the same
-      if(!is.null(g_t_c) | !is.null(o_t_c)) { # ANY covariates are time dependent
-        if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
-          # !r & t & !s
-          for(t in 1:T) {
-            tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
+    } else { # NOT PARALLELIZED
+      g3_temp <- list()
+      if(var(as.vector(red))==0) { # all reduction factors are the same
+        if(!is.null(g_t_c) | !is.null(o_t_c)) { # ANY covariates are time dependent
+          if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
+            # !r & t & !s
+            for(t in 1:T) {
+              tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
 
-            if(is.null(g_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[1,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
-            else if(is.null(o_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
-            else g3_temp <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
+              if(is.null(g_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[1,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
+              else if(is.null(o_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
+              else g3_temp <- tp_MAT(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
 
+              for(i in 1:R) {
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          } else {                   # at least ONE covariate is site dependent
+            # !r & t & s
             for(i in 1:R) {
-              g3[[i]][[t]] <- g3_temp
-            }
-          }
-        } else {                   # at least ONE covariate is site dependent
-          # !r & t & s
-          for(i in 1:R) {
-            for(t in 1:T) {
-              tempMat      <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-              if(is.null(g_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
-              else if(is.null(o_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
-              else g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
+              for(t in 1:T) {
+                tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+                if(is.null(g_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
+                else if(is.null(o_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
+                else g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
 
-              g3[[i]][[t]] <- g3_temp
+                g3[[i]][[t]] <- g3_temp
+              }
             }
           }
-        }
-      } else {                     # NO covariates are time dependent
-        if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
-          # !r & !t & !s
-          tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-          g3_temp <- tp_MAT(M = tempMat, omeg = omeg[1,1], B_o=B_o, omet=0, B_ot=0, gamm = gamm[1,1], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
-          for(i in 1:R) {
-            for(t in 1:T) {
-              g3[[i]][[t]] <- g3_temp
-            }
-          }
-        } else {                     # at least ONE covariate is site dependent
-          # !r & !t & s
-          for(i in 1:R) {
+        } else {                     # NO covariates are time dependent
+          if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
+            # !r & !t & !s
             tempMat <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-            g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
-            for(t in 1:T) {
-              g3[[i]][[t]] <- g3_temp
+            g3_temp <- tp_MAT(M = tempMat, omeg = omeg[1,1], B_o=B_o, omet=0, B_ot=0, gamm = gamm[1,1], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
+            for(i in 1:R) {
+              for(t in 1:T) {
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          } else {                     # at least ONE covariate is site dependent
+            # !r & !t & s
+            for(i in 1:R) {
+              tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+              g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
+              for(t in 1:T) {
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          }
+        }
+      } else {                     # some reduction factors different
+        if(!is.null(g_t_c) | !is.null(o_t_c)) {        # ANY covariates are time dependent
+          if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
+            # r & t & !s
+            # note this is the same as r & t & s since r requires site dependent calc of tp_MAT
+            for(i in 1:R) {
+              for(t in 1:T) {
+                tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+                if(is.null(g_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=FALSE)
+                else if(is.null(o_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
+                else g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
+
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          } else {                   # at least ONE covariate is site dependent
+            # r & t & s
+            for(i in 1:R) {
+              for(t in 1:T) {
+                tempMat      <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+                if(is.null(g_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
+                else if(is.null(o_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
+                else g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
+
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          }
+        } else {                     # NO covariates are time dependent
+          if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
+            # r & !t & !s
+            for(i in 1:R) {
+              tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+              g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE)
+              for(t in 1:T) {
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          } else {                     # at least ONE covariate is site dependent
+            # r & !t & s
+            # note: same as # r & !t & !s since r requires site dependent calc of tp_MAT
+            for(i in 1:R) {
+              tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
+              g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE)
+              for(t in 1:T) {
+                g3[[i]][[t]] <- g3_temp
+              }
             }
           }
         }
       }
-    } else {                     # some reduction factors different
-      if(!is.null(g_t_c) | !is.null(o_t_c)) {        # ANY covariates are time dependent
-        if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
-          # r & t & !s
-          # note this is the same as r & t & s since r requires site dependent calc of tp_MAT
-          for(i in 1:R) {
-            for(t in 1:T) {
-              tempMat      <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-              if(is.null(g_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=FALSE)
-              else if(is.null(o_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
-              else g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE)
 
-              g3[[i]][[t]] <- g3_temp
+
+    }
+
+    for(i in 1:R) {
+      g1_t_star[[i]] <- rep(0, times=K[i]+1)
+      g1_t[[i]]      <- numeric(K[i]+1)
+      g1[[i]]        <- numeric(K[i]+1)
+      g2[[i]]        <- numeric(K[i]+1)
+      g_star[[i]]    <- rep(1, times=K[i]+1)
+    }
+
+    # apply over sites (1 to R), TODO: this is a prime candidate for parallel since each site i is independent
+    ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, B_p, pt, B_pt, red, g3, g1_t_star, g1_t,g1,g2, g_star) {
+      g3        <- g3[[i]]
+      g1_t_star <- g1_t_star[[i]]
+      g1_t      <- g1_t[[i]]
+      g1        <- g1[[i]]
+      g2        <- g2[[i]]
+      g_star    <- g_star[[i]]
+      K         <- K[i]
+
+
+      # loop backwards over times t, stopping at t==2
+      for(t in T:2) {
+        # size takes possible value of N (0 to K) at time t (for t > 1)
+        g1_t <- drbinom(x = Y[i,t], size = (0:K)*red[i,1], prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,t])
+        g1_t_star <- g1_t * g_star
+
+        # update g_star
+        g_star = g3[[t]] %*% g1_t_star
+      }
+
+      # size takes possible values of N (0 to K) at time t==1
+      g1 <- drbinom(x = Y[i,1], size = (0:K)*red[i,1], prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,1])
+      g2 <- drpois(x = 0:K, lambda = exp(sum(lamb[i,] * B_l)), red = red[i,1])
+
+
+      # apply recursive definition of likelihood
+      return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
+    }, FUN.VALUE = numeric(1), K=K, T=T, Y=Y, lamb=lamb, B_l=B_l, pdet=pdet, B_p=B_p, pt=pt, B_pt=B_pt, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
+
+    ll <- sum(unlist(ll_i))
+    ###########################
+    ###########################
+    ###########################
+  } else { # APA = TRUE
+    # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
+    lamb <- Rmpfr::mpfrArray(x = 1, precBits = precBits, dim = c(R,1)) # covariate coefficients for lambda
+    B_l <- Rmpfr::mpfr(par[1], precBits=precBits) # covariates for lambda
+    if(!is.null(l_s_c)) {
+      lamb <- cbind(lamb, do.call(cbind, l_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+      B_l <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        Rmpfr::mpfr(par[X],precBits=precBits)
+      }, par=par)
+      B_l <- new("mpfr", unlist(B_l))
+    }
+
+    # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
+    gamm <- Rmpfr::mpfrArray(x = 1, precBits = precBits, dim = c(R,1)) # site covariate coefficients for gamma
+    B_g <- Rmpfr::mpfr(par[length(B_l)+1], precBits=precBits) # covariates for gamma
+    if(!is.null(g_s_c)) {
+      gamm <- cbind(gamm, do.call(cbind, g_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+
+      B_g <- sapply(X = 1:(length(g_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        Rmpfr::mpfr(par[length(B_l)+X],precBits=precBits)
+      }, par=par)
+      B_g <- new("mpfr", unlist(B_g))
+    }
+
+    # extract gamma estimates from par, setup gamma covariate matrix gamt, and covariate vector B_gt
+    gamt <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(T,1)) # time covariate coefficients for gamma
+    B_gt <- NULL # covariates for gamma
+    if(!is.null(g_t_c)) {
+      gamt <- do.call(cbind, g_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+      #gamt <- rbind(gamt,rep(0, times=length(g_t_c)))
+
+      B_gt <- sapply(X = 1:length(g_t_c), FUN = function(X,par) { # one coeff per covariate
+        Rmpfr::mpfr(par[length(B_l)+length(B_g)+X],precBits=precBits)
+      }, par=par)
+      B_gt <- new("mpfr", unlist(B_gt))
+    }
+
+    # extract omega estimates from par, setup omega covariate matrix omeg, and covariate vector B_o
+    omeg <- Rmpfr::mpfrArray(x = 1, precBits = precBits, dim = c(R,1)) # site covariate coefficients for omega
+    B_o  <- Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+1], precBits=precBits) # covariates for omega
+    if(!is.null(o_s_c)) {
+      omeg <- cbind(omeg, do.call(cbind, o_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+
+      B_o <- sapply(X = 1:(length(o_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+X], precBits=precBits)
+      }, par=par)
+      B_o <- new("mpfr", unlist(B_o))
+    }
+
+    # extract omega estimates from par, setup omega covariate matrix omet, and covariate vector B_ot
+    omet <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(T,1)) # time covariate coefficients for omega
+    B_ot <- NULL # covariates for omega
+    if(!is.null(o_t_c)) {
+      omet <- do.call(cbind, o_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+
+      B_ot <- sapply(X = 1:length(o_t_c), FUN = function(X,par) { # one coeff per covariate
+        Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+X], precBits=precBits)
+      }, par=par)
+      B_ot <- new("mpfr", unlist(B_ot))
+    }
+
+    # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
+    pdet <- Rmpfr::mpfrArray(x = 1, precBits = precBits, dim = c(R,1)) # site covariate coefficients for pdet
+    B_p  <- Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+1], precBits=precBits) # covariates for pdet
+    if(!is.null(p_s_c)) {
+      pdet <- cbind(pdet, do.call(cbind, p_s_c)) # rows are sites, cols are covariate values, here we are creating the design matrix
+
+      B_p <- sapply(X = 1:(length(p_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
+        Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+X], precBits=precBits)
+      }, par=par)
+      B_p <- new("mpfr", unlist(B_p))
+    }
+
+
+    # extract pdet estimates from par, setup pdet covariate matrix pt, and covariate vector B_pt
+    pt   <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(T,1)) # time covariate coefficients for pdet
+    B_pt <- NULL # covariates for pdet
+    if(!is.null(p_t_c)) {
+      pt   <- do.call(cbind, p_t_c) # rows are times, cols are covariate values, here we are creating the design matrix
+
+      B_pt <- sapply(X = 1:length(p_t_c), FUN = function(X,par) { # one coeff per covariate
+        Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+length(B_p)+X], precBits=precBits)
+      }, par=par)
+      B_pt <- new("mpfr", unlist(B_pt))
+    }
+
+    Y <- nit
+
+    g1_t_star <- list()
+    g1_t      <- list()
+    g1        <- list()
+    g2        <- list()
+    g_star    <- list()
+    g3        <- vector(length = R, mode = "list")#list()
+    g3_temp   <- list()
+
+    if(PARALLELIZE) {
+      if(!is.null(g_t_c) | !is.null(o_t_c)) { # TIME DEPENDENT
+        if(!is.null(g_s_c) | !is.null(o_s_c) | var(as.vector(red))!=0) { # SITE DEPENDENT
+          g3_temp <- foreach(i=1:R, .packages = c("redNMix","foreach","optimizeAPA","Rmpfr")) %:%
+            foreach(t=1:T, .packages = c("redNMix","foreach","optimizeAPA","Rmpfr")) %dopar% {
+              tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+
+              if(is.null(o_t_c)) tempMat <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE, precBits = precBits)
+              else if(is.null(g_t_c)) tempMat <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE, precBits = precBits)
+              else tempMat <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=TRUE, precBits = precBits)
+              return(tempMat)
             }
+          for(i in 1:R) {
+            g3[[i]]<- g3_temp[[i]]
           }
-        } else {                   # at least ONE covariate is site dependent
-          # r & t & s
+        } else {# NOT SITE DEPENDENT
+          g3_temp <- foreach(t=1:T, .packages = c("redNMix","foreach","optimizeAPA","Rmpfr")) %dopar% {
+            tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+            if(is.null(o_t_c)) tempMat <- tp_MAT_APA(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=TRUE, precBits = precBits)
+            else if(is.null(g_t_c)) tempMat <- tp_MAT_APA(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[1,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=TRUE, precBits = precBits)
+            else tempMat <- tp_MAT_APA(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm = gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=TRUE, precBits = precBits)
+            return(tempMat)
+          }
           for(i in 1:R) {
             for(t in 1:T) {
-              tempMat      <- matrix(0, nrow = K[1]+1, ncol=K[1]+1)
-              if(is.null(g_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE)
-              else if(is.null(o_t_c)) g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
-              else g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE)
-
-              g3[[i]][[t]] <- g3_temp
+              g3[[i]][[t]] <- g3_temp[[t]]
             }
           }
         }
-      } else {                     # NO covariates are time dependent
-        if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
-          # r & !t & !s
-          for(i in 1:R) {
-            tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-            g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE)
+      } else {  # NOT TIME DEPENDENT
+        g3_temp <- foreach(i=1:R, .packages=c("redNMix","foreach","optimizeAPA","Rmpfr")) %dopar% {
+          tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+          tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=TRUE, precBits = precBits)
+        }
+        for(i in 1:R) {
+          for(t in 1:T) {
+            g3[[i]][[t]] <- g3_temp[[i]]
+          }
+        }
+      }
+      ######################
+      ######################
+      ######################
+    } else { # NOT PARALLELIZED
+      g3_temp <- list()
+      if(var(as.vector(red))==0) { # all reduction factors are the same
+        if(!is.null(g_t_c) | !is.null(o_t_c)) { # ANY covariates are time dependent
+          if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
+            # !r & t & !s
             for(t in 1:T) {
-              g3[[i]][[t]] <- g3_temp
+
+
+              tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[1]+1,K[1]+1))
+
+              if(is.null(g_t_c)) g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[1,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+              else if(is.null(o_t_c)) g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+              else g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[1,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[1,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+
+              for(i in 1:R) {
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          } else {                   # at least ONE covariate is site dependent
+            # !r & t & s
+            for(i in 1:R) {
+              for(t in 1:T) {
+                tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+                if(is.null(g_t_c)) g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+                else if(is.null(o_t_c)) g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+                else g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+
+                g3[[i]][[t]] <- g3_temp
+              }
             }
           }
-        } else {                     # at least ONE covariate is site dependent
-          # r & !t & s
-          # note: same as # r & !t & !s since r requires site dependent calc of tp_MAT
-          for(i in 1:R) {
-            tempMat <- matrix(0, nrow = K[i]+1, ncol=K[i]+1)
-            g3_temp <- tp_MAT(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE)
-            for(t in 1:T) {
-              g3[[i]][[t]] <- g3_temp
+        } else {                     # NO covariates are time dependent
+          if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
+            # !r & !t & !s
+            tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[1]+1,K[1]+1))
+            g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[1,1], B_o=B_o, omet=0, B_ot=0, gamm = gamm[1,1], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+            for(i in 1:R) {
+              for(t in 1:T) {
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          } else {                     # at least ONE covariate is site dependent
+            # !r & !t & s
+            for(i in 1:R) {
+              tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+              g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+              for(t in 1:T) {
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          }
+        }
+      } else {                     # some reduction factors different
+        if(!is.null(g_t_c) | !is.null(o_t_c)) {        # ANY covariates are time dependent
+          if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
+            # r & t & !s
+            # note this is the same as r & t & s since r requires site dependent calc of tp_MAT
+            for(i in 1:R) {
+              for(t in 1:T) {
+                tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+                if(is.null(g_t_c)) g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,1], PARALLELIZE=FALSE, precBits = precBits)
+                else if(is.null(o_t_c)) g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE, precBits = precBits)
+                else g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[i,1], PARALLELIZE=FALSE, precBits = precBits)
+
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          } else {                   # at least ONE covariate is site dependent
+            # r & t & s
+            for(i in 1:R) {
+              for(t in 1:T) {
+                tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+                if(is.null(g_t_c)) g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+                else if(is.null(o_t_c)) g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+                else g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=omet[t,], B_ot=B_ot, gamm=gamm[i,], B_g=B_g, gamt=gamt[t,], B_gt=B_gt, red = red[1,1], PARALLELIZE=FALSE, precBits = precBits)
+
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          }
+        } else {                     # NO covariates are time dependent
+          if(is.null(g_s_c) & is.null(o_s_c)) { # ALL covariates are constant across sites
+            # r & !t & !s
+            for(i in 1:R) {
+              tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+              g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE, precBits = precBits)
+              for(t in 1:T) {
+                g3[[i]][[t]] <- g3_temp
+              }
+            }
+          } else {                     # at least ONE covariate is site dependent
+            # r & !t & s
+            # note: same as # r & !t & !s since r requires site dependent calc of tp_MAT
+            for(i in 1:R) {
+              tempMat <- Rmpfr::mpfrArray(0, precBits = precBits, dim = c(K[i]+1,K[i]+1))
+              g3_temp <- tp_MAT_APA(M = tempMat, omeg = omeg[i,], B_o=B_o, omet=0, B_ot=0, gamm = gamm[i,], B_g=B_g, gamt=0, B_gt=0, red = red[i,], PARALLELIZE=FALSE, precBits = precBits)
+              for(t in 1:T) {
+                g3[[i]][[t]] <- g3_temp
+              }
             }
           }
         }
       }
+
+
     }
 
-
-  }
-
-  for(i in 1:R) {
-    g1_t_star[[i]] <- rep(0, times=K[i]+1)
-    g1_t[[i]]      <- numeric(K[i]+1)
-    g1[[i]]        <- numeric(K[i]+1)
-    g2[[i]]        <- numeric(K[i]+1)
-    g_star[[i]]    <- rep(1, times=K[i]+1)
-  }
-
-  # apply over sites (1 to R), TODO: this is a prime candidate for parallel since each site i is independent
-  ll_i  <- vapply(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, B_p, pt, B_pt, red, g3, g1_t_star, g1_t,g1,g2, g_star) {
-    g3        <- g3[[i]]
-    g1_t_star <- g1_t_star[[i]]
-    g1_t      <- g1_t[[i]]
-    g1        <- g1[[i]]
-    g2        <- g2[[i]]
-    g_star    <- g_star[[i]]
-    K         <- K[i]
-
-
-    # loop backwards over times t, stopping at t==2
-    for(t in T:2) {
-      # size takes possible value of N (0 to K) at time t (for t > 1)
-      g1_t <- drbinom(x = Y[i,t], size = (0:K)*red[i,1], prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,t])
-      g1_t_star <- g1_t * g_star
-
-      # update g_star
-      g_star = g3[[t]] %*% g1_t_star
+    for(i in 1:R) {
+      g1_t_star[[i]] <- rep(0, times=K[i]+1)
+      g1_t[[i]]      <- numeric(K[i]+1)
+      g1[[i]]        <- numeric(K[i]+1)
+      g2[[i]]        <- numeric(K[i]+1)
+      g_star[[i]]    <- rep(1, times=K[i]+1)
     }
 
-    # size takes possible values of N (0 to K) at time t==1
-    g1 <- drbinom(x = Y[i,1], size = (0:K)*red[i,1], prob = plogis(sum(pdet[i,] * B_p)+sum(pt[t,] * B_pt)), red = red[i,1])
-    g2 <- drpois(x = 0:K, lambda = exp(sum(lamb[i,] * B_l)), red = red[i,1])
+    # apply over sites (1 to R), TODO: this is a prime candidate for parallel since each site i is independent
+    ll_i  <- Rmpfr::sapplyMpfr(X = 1:R, FUN = function(i, K, T, Y, lamb, B_l, pdet, B_p, pt, B_pt, red, g3, g1_t_star, g1_t,g1,g2, g_star, precBits) {
+      g3        <- g3[[i]]
+      g1_t_star <- g1_t_star[[i]]
+      g1_t      <- g1_t[[i]]
+      g1        <- g1[[i]]
+      g2        <- g2[[i]]
+      g_star    <- g_star[[i]]
+      K         <- K[i]
 
 
-    # apply recursive definition of likelihood
-    return( log(sum(g1 * g2 * g_star)) ) # + 1e-320
-  }, FUN.VALUE = numeric(1), K=K, T=T, Y=Y, lamb=lamb, B_l=B_l, pdet=pdet, B_p=B_p, pt=pt, B_pt=B_pt, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star)
+      # loop backwards over times t, stopping at t==2
+      for(t in T:2) {
+        # size takes possible value of N (0 to K) at time t (for t > 1)
+        p_temp <- ifelse(is.null(B_pt), 0, pt[t,] * B_pt)
+        if(class(p_temp[1])=="numeric") {
+          p_temp <- unlist(p_temp)
+        } else {
+          p_temp <- new("mpfr", unlist(p_temp))
+        }
+        p <- optimizeAPA::plogis_APA(sum(pdet[i,] * B_p)+sum(p_temp), precBits = precBits)
+        g1_t <- drbinomAPA(x = Y[i,t], size = (0:K)*red[i,1], prob = p, red = red[i,t], precBits = precBits)
+        g1_t_star <- g1_t * g_star
 
-  ll <- sum(unlist(ll_i))
-  ###
+        # update g_star
+        g_star = g3[[t]] %*% g1_t_star
+      }
 
-  if(VERBOSE) { print(paste0("log likelihood: ",ll)) }
+      Bp_temp  <- Rmpfr::mpfr2array(ifelse(is.null(B_p), Rmpfr::mpfr(0,precBits), sum(pdet[i,] * B_p)),dim = c(length(pdet[i,]),1))
+      Bpt_temp <- Rmpfr::mpfr2array(ifelse(is.null(B_pt), Rmpfr::mpfr(0,precBits), sum(pt[t,] * B_pt)),dim = c(length(pt[t,]),1))
+      # size takes possible values of N (0 to K) at time t==1
+      p <- optimizeAPA::plogis_APA(Bp_temp+Bpt_temp, precBits = precBits)
+      g1 <- drbinomAPA(x = Y[i,1], size = (0:K)*red[i,1], prob = p, red = red[i,1], precBits = precBits)
+      g2 <- drpoisAPA(x = 0:K, lambda = exp(sum(lamb[i,] * B_l)), red = red[i,1], precBits = precBits)
+
+      # apply recursive definition of likelihood
+      return( Rmpfr::mpfr(log(sum(g1 * g2 * g_star)), precBits) ) # + 1e-320
+    }, K=K, T=T, Y=Y, lamb=lamb, B_l=B_l, pdet=pdet, B_p=B_p, pt=pt, B_pt=B_pt, red=red, g3=g3, g1_t_star=g1_t_star, g1_t=g1_t,g1=g1,g2=g2,g_star=g_star,precBits=precBits)
+
+    ll <- sum(ll_i)
+  }
+
+  if(VERBOSE) { print(paste0("log likelihood: ",as.numeric(ll))) }
   return(-1*ll)
 }
 
@@ -789,7 +1117,7 @@ tp_jk_V_ <- function(j_vec,k_vec,omeg,gamm,red) {
 
   p <- mapply(FUN = function(j,k,omeg,gamm,red) {
     rb <- drbinom(x = 0:min(j,k), size = j*red, prob = omeg, red = red)
-    rp <- drpois_1(x = k-0:min(j,k), lambda = gamm, red = red)
+    rp <- drpois(x = k-0:min(j,k), lambda = gamm, red = red)
 
     return(sum(rb * rp))
   }, j=j_vec, k=k_vec, omeg=omeg, gamm=gamm,red=red)
@@ -815,6 +1143,57 @@ tp_MAT_ <- function(M, omeg, B_o, omet, B_ot, gamm, B_g, gamt, B_gt, red, PARALL
 tp_MAT <- compiler::cmpfun(tp_MAT_)
 
 
+#' Internal function, calculates transition probabilities from pop size j to pop size k in the open population likelihood.
+tp_jk_V_APA <- function(j_vec,k_vec,omeg,gamm,red,precBits=53) {
+
+  p <- mapply(FUN = function(j,k,omeg,gamm,red,precBits) {
+    rb <- drbinomAPA(x = 0:min(j,k), size = j*red, prob = omeg, red = red, precBits = precBits)
+    rp <- drpoisAPA(x = k-0:min(j,k), lambda = gamm, red = red, precBits = precBits)
+
+    return(sum(rb * rp))
+  }, j=j_vec, k=k_vec, omeg=omeg, gamm=gamm,red=red,precBits=precBits)
+
+  p <- Rmpfr::mpfr2array(p, dim=c(1,min(length(j_vec),length(k_vec))))
+  return(p)
+}
+
+#' Internal function, calculates transition probability matrix (transition from row pop to column pop)
+tp_MAT_APA <- function(M, omeg, B_o, omet, B_ot, gamm, B_g, gamt, B_gt, red, PARALLELIZE=FALSE, precBits=128) {
+  K1 <- 1:(nrow(M))
+  o_temp <- ifelse(is.null(B_ot), 0, B_ot*omet)
+  g_temp <- ifelse(is.null(B_gt), 0, B_gt*gamt)
+  if(class(o_temp[1])=="numeric") {
+    o_temp <- unlist(o_temp)
+  } else {
+    o_temp <- new("mpfr", unlist(o_temp))
+  }
+  if(class(g_temp[1])=="numeric") {
+    g_temp <- unlist(g_temp)
+  } else {
+    g_temp <- new("mpfr", unlist(g_temp))
+  }
+  if(class(B_g[1])=="numeric") {
+    B_g <- unlist(B_g)
+  } else {
+    B_g <- new("mpfr", unlist(B_g))
+  }
+  if(class(B_o[1])=="numeric") {
+    B_o <- unlist(B_o)
+  } else {
+    B_o <- new("mpfr", unlist(B_o))
+  }
+  if(PARALLELIZE) {
+    M <- foreach(a = K1-1, .combine = rbind, .packages = "Rmpfr", "optimizeAPA") %dopar% {
+      tp_jk_V_APA(j_vec = a, k_vec = 1:nrow(M)-1, omeg = optimizeAPA::plogis_APA(sum(omeg * B_o)+sum(o_temp), precBits = precBits), gamm = exp(sum(B_g*gamm)+sum(g_temp)), red = red, precBits = precBits)
+    }
+    #M <- Rmpfr::mpfr2array(M, dim=c(length(K1),length(K1)))
+  } else {
+    M <- outer(X = K1-1,Y = K1-1, FUN = tp_jk_V_APA, omeg = optimizeAPA::plogis_APA(sum(omeg * B_o)+sum(o_temp), precBits = precBits), gamm = exp(sum(B_g*gamm)+sum(g_temp)), red, precBits = precBits)
+    #M <- Rmpfr::mpfr2array(M, dim=c(length(K1),length(K1)))
+  }
+  return(M)
+}
+
 #' Find maximum likelihood estimates for model parameters log(lambda) and logit(pdet). Uses optim.
 #' @param starts Vector of starting values for optimize. Has two elements, log(lambda) and logit(pdet).
 #' @param nit    R by T matrix of full counts with R sites/rows and T sampling occassions/columns.
@@ -826,7 +1205,7 @@ tp_MAT <- compiler::cmpfun(tp_MAT_)
 #' @param PARALLELIZE If true, calculation will be split over threads by sites. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
 #' @param APA    If true, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.
 #' @param precBits If APA=TRUE, then this will specify the number of bits of precision.
-#' @param tolerance Only used if APA=FALSE (so not using precBits), specifies tolerance for convergence (defulat is 10^-6).
+#' @param tolerance specifies tolerance for convergence (defulat is 10^-6), all components of estimated gradient must be less than tolerance for convergence. If APA=TRUE, then tolerance can be made very small (eg 10^-20) using: tolerance=Rmpfr::mpfr(10^-20, precBits=128). NOTE: currently tolerance is only used if method="DFP".
 #' @param ...    Additional input for optim.
 #' @examples
 #' START_PARALLEL(num_cores=4)
@@ -852,7 +1231,7 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
     }
     # update default starting values
     if(identical(starts,c(1,0))) starts <- c(starts, rep(0, times=length(pdet_site_covariates)))
-    numCov      <- length(pdet_site_covariates)-1
+    numCov      <- length(pdet_site_covariates)
     pdet_names  <- c(pdet_names, paste0("B_p_s_",1:numCov))
   }
 
@@ -863,7 +1242,7 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
     }
     # update default starting values
     if(identical(starts,c(1,0))) starts <- c(rep(1, times=length(lambda_site_covariates)), starts)
-    numCov      <- length(lambda_site_covariates)-1
+    numCov      <- length(lambda_site_covariates)
     lamb_names  <- c(lamb_names, paste0("B_l_s_",1:numCov))
   }
 
@@ -943,6 +1322,7 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
                          VERBOSE     = VERBOSE,
                          PARALLELIZE = PARALLELIZE,
                          APA         = TRUE,
+                         tolerance   = tolerance,
                          precBits    = precBits,
                          ...)
 
@@ -962,6 +1342,8 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
 #' @param num_cores Number of cores to use for parallel processing.
 #' @export
 START_PARALLEL <- function(num_cores) {
+  library(doParallel)
+  library(foreach)
   doParallel::registerDoParallel(cores=num_cores)
 }
 
@@ -981,11 +1363,14 @@ END_PARALLEL <- function() {
 #' @param gamma_time_covariates  Either NULL (no gamma time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be log(gamma_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param omega_time_covariates  Either NULL (no omega time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
 #' @param pdet_time_covariates   Either NULL (no pdet time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...
-#' @param K      Upper bound on summations, will be reduced by reduction factor red.
-#' @param red    reduction factor, either a number or a vector of length R.
-#' @param VERBOSE If TRUE, prints the log likelihood to console at each optim iteration.
+#' @param K           Upper bound on summations, will be reduced by reduction factor red.
+#' @param red         reduction factor, either a number or a vector of length R.
+#' @param VERBOSE     If TRUE, prints the log likelihood to console at each optim iteration.
 #' @param PARALLELIZE If TRUE, calculation will be split over threads by sites and times. This will not improve computation time if there are no site or time covariates. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).
-#' @param ...    Additional input for optim.
+#' @param APA         If true, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.
+#' @param precBits    If APA=TRUE, then this will specify the number of bits of precision.
+#' @param tolerance   specifies tolerance for convergence (defulat is 10^-6), all components of estimated gradient must be less than tolerance for convergence. If APA=TRUE, then tolerance can be made very small (eg 10^-20) using: tolerance=Rmpfr::mpfr(10^-20, precBits=128). NOTE: currently tolerance is only used if method="DFP".
+#' @param ...         Additional input for optim.
 #' @examples
 #'
 #' Y   <- gen_Nmix_open(num_sites = 5, num_times = 5, lambda = 20, pdet = 0.7, omega = 0.7, gamma = 2)
@@ -1029,7 +1414,7 @@ END_PARALLEL <- function() {
 #' # pdet sites 3, 4, and 5 estimate:
 #' plogis(sum(mod1$par[7:8]))
 #' @export
-fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, pdet_time_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", ...) {
+fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, pdet_time_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128, tolerance=10^-6, method="BFGS", ...) {
    if(length(red)==1) {
      red <- rep(red, times=nrow(nit))
    }
@@ -1129,24 +1514,88 @@ fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covar
      starts <- c(lamb_starts, gamm_starts, omeg_starts, pdet_starts)
    }
 
+   Y_m <- matrix(0, nrow=nrow(nit), ncol=ncol(nit))
+   for(i in 1:nrow(nit)) {
+     Y_m[i,] <- reduction(nit[i,], red[i,1])
+   }
 
-   opt <- optim(par     = starts,
-                fn      = red_Like_open,
-                nit     = reduction(x = nit, red = red),
-                l_s_c   = lambda_site_covariates,
-                g_s_c   = gamma_site_covariates,
-                g_t_c   = gamma_time_covariates,
-                o_s_c   = omega_site_covariates,
-                o_t_c   = omega_time_covariates,
-                p_s_c   = pdet_site_covariates,
-                p_t_c   = pdet_time_covariates,
-                K       = red_K,
-                red     = red,
-                VERBOSE = VERBOSE,
-                method  = method,
-                PARALLELIZE = PARALLELIZE,
-                ...)
-   names(opt$par) <- c(lamb_names, gamm_names, omeg_names, pdet_names)
+   NAMES <- c(lamb_names, gamm_names, omeg_names, pdet_names)
+
+   opt <- NULL
+   if(!APA) {
+     if(method=="DFP"){
+       opt <- optimizeAPA::optim_DFP_NAPA(starts  = starts,
+                                          func    = red_Like_open,
+                                          nit     = Y_m,
+                                          l_s_c   = lambda_site_covariates,
+                                          g_s_c   = gamma_site_covariates,
+                                          g_t_c   = gamma_time_covariates,
+                                          o_s_c   = omega_site_covariates,
+                                          o_t_c   = omega_time_covariates,
+                                          p_s_c   = pdet_site_covariates,
+                                          p_t_c   = pdet_time_covariates,
+                                          K           = red_K,
+                                          red         = red,
+                                          VERBOSE     = VERBOSE,
+                                          PARALLELIZE = PARALLELIZE,
+                                          APA         = FALSE,
+                                          precBits    = precBits,
+                                          tolerance   = tolerance,
+                                          ...)
+       if(length(opt$x)==length(NAMES)) {
+         rownames(opt$x) <- NAMES
+       } else {
+         for(i in 1:length(opt$x)) {
+           rownames(opt$x[[i]]) <- NAMES
+         }
+       }
+     } else {
+       opt <- optim(par     = starts,
+                    fn      = red_Like_open,
+                    nit     = Y_m,
+                    l_s_c   = lambda_site_covariates,
+                    g_s_c   = gamma_site_covariates,
+                    g_t_c   = gamma_time_covariates,
+                    o_s_c   = omega_site_covariates,
+                    o_t_c   = omega_time_covariates,
+                    p_s_c   = pdet_site_covariates,
+                    p_t_c   = pdet_time_covariates,
+                    K       = red_K,
+                    red     = red,
+                    VERBOSE = VERBOSE,
+                    method  = method,
+                    PARALLELIZE = PARALLELIZE,
+                    ...)
+       names(opt$par) <- NAMES
+     }
+   } else { # APA
+     opt <- optimizeAPA::optim_DFP_APA(starts  = starts,
+                                       func    = red_Like_open,
+                                       nit     = Y_m,
+                                       l_s_c   = lambda_site_covariates,
+                                       g_s_c   = gamma_site_covariates,
+                                       g_t_c   = gamma_time_covariates,
+                                       o_s_c   = omega_site_covariates,
+                                       o_t_c   = omega_time_covariates,
+                                       p_s_c   = pdet_site_covariates,
+                                       p_t_c   = pdet_time_covariates,
+                                       K           = red_K,
+                                       red         = red,
+                                       VERBOSE     = VERBOSE,
+                                       PARALLELIZE = PARALLELIZE,
+                                       APA         = TRUE,
+                                       precBits    = precBits,
+                                       tolerance   = tolerance,
+                                       ...)
+     if(length(opt$x)==length(NAMES)) {
+       rownames(opt$x) <- NAMES
+     } else {
+       for(i in 1:length(opt$x)) {
+         rownames(opt$x[[i]]) <- NAMES
+       }
+     }
+   }
+
    return(opt)
 }
 
@@ -1218,6 +1667,9 @@ plot_red_like_closed_pdet <- function(nit, startPdet, endPdet, stepsize, lambda,
 #' plot_2d_red_like_closed(reduction(Y$nit,10), 0.1, 1.0, 0.25, 100, 400, 100, 10, reduction(400,10))
 #' @export
 plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, startLambda, endLambda, stepsizeLambda, red, K) {
+  red   <- matrix(red, nrow=nrow(nit), ncol=ncol(nit))
+  K     <- reduction(x = matrix(K, nrow=nrow(red), ncol=ncol(red)), red = red)
+
   par1B <- startPdet
   par1T <- endPdet
   par2B <- startLambda
@@ -1229,7 +1681,7 @@ plot_2d_red_like_closed <- function(nit, startPdet, endPdet, stepsizePdet, start
   for(par1M in prange) {
     k <- 1
     for(par2M in lrange) {
-      L[j,k] <- -1*red_Like_closed(nit = nit, par = c(log(par2M),boot::logit(par1M)), K = K, red = red)
+      L[j,k] <- -1*red_Like_closed(nit = nit, par = c(log(par2M),boot::logit(par1M)), K = K, red = red, l_s_c = NULL, p_s_c = NULL)
       k <- k+1
     }
     j <- j+1

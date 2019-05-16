@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{red_Like_closed}
 \alias{red_Like_closed}
-\title{Internal function. Used to calculate the negative of the log likelihood.}
+\title{Used to calculate the negative of the log likelihood for closed population models.}
 \usage{
 red_Like_closed(par, nit, l_s_c, p_s_c, K, red, FUN = round,
   VERBOSE = FALSE, PARALLELIZE = FALSE, APA = FALSE, precBits = 64)
@@ -29,5 +29,5 @@ red_Like_closed(par, nit, l_s_c, p_s_c, K, red, FUN = round,
 \item{precBits}{If APA=TRUE, then precBits specifies the number of bits of precision for arbitrary precision arithmetic.}
 }
 \description{
-Internal function. Used to calculate the negative of the log likelihood.
+Used to calculate the negative of the log likelihood for closed population models.
 }

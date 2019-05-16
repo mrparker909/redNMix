@@ -25,6 +25,6 @@ x <- dpois(x = 105, lambda = 90)
 # probability of observing reduction(105, 10) from rpois(lam=90, r=10) is larger since multiple values of x map to the same value of y
 y <- drpois(x = reduction(105, 10), lambda = 90, red = 10)
 
-Y <- drpois(seq(1,20,1), 55, 10)
+Y <- drpois(seq(0,20,1), 55, 10)
 plot(Y, xlab="Y=rPois(lambda=55, r=10)", main="X~Poisson(lambda=55)", ylab="P[Y=y]")
 }

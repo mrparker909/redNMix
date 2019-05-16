@@ -10,7 +10,7 @@ test_that("testing against unmarked", {
     time0 <- system.time(
       mod0 <- pcount(~1 ~1,
                      data = uFrameC,
-                     K = 6,
+                     K = 7,
                      se = FALSE,
                      starts = c(log(25),0), method="BFGS")
     )
@@ -18,20 +18,32 @@ test_that("testing against unmarked", {
     time1 <- system.time(
       mod1 <- fit_red_Nmix_closed(nit = Y$nit,
                                   red = 1,
-                                  K = 6,
+                                  K = 7,
                                   starts=c(log(25),0),
                                   method="DFP",
                                   APA=FALSE, maxSteps=100, tolerance = 10^-3)
     )
-    # # ~300 seconds
+
     # time2 <- system.time(
     #   mod2 <- fit_red_Nmix_closed(nit = Y$nit,
     #                               red = 1,
-    #                               K = 6,
+    #                               K = 7,
     #                               starts=c(log(25),0),
     #                               method="DFP",
     #                               APA=TRUE, precBits=128)
     # )
+    #
+    # time3 <- system.time({
+    #   START_PARALLEL(2)
+    #   mod3 <- fit_red_Nmix_closed(nit = Y$nit,
+    #                               red = 1,
+    #                               K = 7,
+    #                               starts=c(log(25),0),
+    #                               method="DFP",
+    #                               APA=TRUE, precBits=128, PARALLELIZE = TRUE)
+    #   END_PARALLEL()}
+    # )
+
     expect_equal(as.numeric(mod1$f), as.numeric(mod0@opt$value))
     expect_equal(as.numeric(mod1$x), as.numeric(mod0@opt$par), tolerance=10^-3)
   }

@@ -1,7 +1,7 @@
 Package: redNMix
 Type: Package
 Title: Package For Fitting and Analyzing Reduced Count N-Mixture Models
-Version: 0.1.5
+Version: 0.2.0
 Author: Matthew R. P. Parker
 Description: Package For Fitting and Analyzing Reduced Count N-Mixture Models.
 License: Creative Commons
@@ -10,10 +10,10 @@ LazyData: true
 RoxygenNote: 6.1.1
 Imports:
   foreach,
+  parallel,
   doParallel,
   reshape2,
   numbers,
-  optimizeAPA,
   Rmpfr
 Remotes:
   mrparker909/optimizeAPA

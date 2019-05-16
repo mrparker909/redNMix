@@ -26,5 +26,5 @@ Reduced binomial probability distribution function \eqn{rBinomial(x;N,p,R(x;r))}
 takes reduced quantiles rather than full quantiles (use drbinom2 for full quantiles).
 }
 \examples{
-Y <- drbinomAPA(0:20, 20, 0.3, 10, precBits=64)
+Y <- drbinomAPA(0:3, 20, 0.3, 10, precBits=64)
 }
