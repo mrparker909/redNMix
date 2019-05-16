@@ -315,7 +315,7 @@ drpoisAPA  <- function(x, lambda, red, precBits=128, log=FALSE) {
     }
     pt[i] <- sum(methods::new("mpfr", unlist(ptj)))
   }
-  p <- new("mpfr", unlist(pt))
+  p <- methods::new("mpfr", unlist(pt))
   if(log) {
     return(log(p))
   }
@@ -466,7 +466,7 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
         return(log(li))
       }
 
-      l <- sum(new("mpfr", unlist(li)))
+      l <- sum(methods::new("mpfr", unlist(li)))
       ###
     } else { # NOT PARALLEL and APA
       for(i in 1:R) {
@@ -808,7 +808,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
       B_l <- sapply(X = 1:(length(l_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
         Rmpfr::mpfr(par[X],precBits=precBits)
       }, par=par)
-      B_l <- new("mpfr", unlist(B_l))
+      B_l <- methods::new("mpfr", unlist(B_l))
     }
 
     # extract gamma estimates from par, setup gamma covariate matrix gamm, and covariate vector B_g
@@ -820,7 +820,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
       B_g <- sapply(X = 1:(length(g_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
         Rmpfr::mpfr(par[length(B_l)+X],precBits=precBits)
       }, par=par)
-      B_g <- new("mpfr", unlist(B_g))
+      B_g <- methods::new("mpfr", unlist(B_g))
     }
 
     # extract gamma estimates from par, setup gamma covariate matrix gamt, and covariate vector B_gt
@@ -833,7 +833,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
       B_gt <- sapply(X = 1:length(g_t_c), FUN = function(X,par) { # one coeff per covariate
         Rmpfr::mpfr(par[length(B_l)+length(B_g)+X],precBits=precBits)
       }, par=par)
-      B_gt <- new("mpfr", unlist(B_gt))
+      B_gt <- methods::new("mpfr", unlist(B_gt))
     }
 
     # extract omega estimates from par, setup omega covariate matrix omeg, and covariate vector B_o
@@ -845,7 +845,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
       B_o <- sapply(X = 1:(length(o_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
         Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+X], precBits=precBits)
       }, par=par)
-      B_o <- new("mpfr", unlist(B_o))
+      B_o <- methods::new("mpfr", unlist(B_o))
     }
 
     # extract omega estimates from par, setup omega covariate matrix omet, and covariate vector B_ot
@@ -857,7 +857,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
       B_ot <- sapply(X = 1:length(o_t_c), FUN = function(X,par) { # one coeff per covariate
         Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+X], precBits=precBits)
       }, par=par)
-      B_ot <- new("mpfr", unlist(B_ot))
+      B_ot <- methods::new("mpfr", unlist(B_ot))
     }
 
     # extract pdet estimates from par, setup pdet covariate matrix pdet, and covariate vector B_p
@@ -869,7 +869,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
       B_p <- sapply(X = 1:(length(p_s_c)+1), FUN = function(X,par) { # one coeff per covariate +1 for baseline B0
         Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+X], precBits=precBits)
       }, par=par)
-      B_p <- new("mpfr", unlist(B_p))
+      B_p <- methods::new("mpfr", unlist(B_p))
     }
 
 
@@ -882,7 +882,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
       B_pt <- sapply(X = 1:length(p_t_c), FUN = function(X,par) { # one coeff per covariate
         Rmpfr::mpfr(par[length(B_l)+length(B_g)+length(B_gt)+length(B_o)+length(B_ot)+length(B_p)+X], precBits=precBits)
       }, par=par)
-      B_pt <- new("mpfr", unlist(B_pt))
+      B_pt <- methods::new("mpfr", unlist(B_pt))
     }
 
     Y <- nit
@@ -1072,7 +1072,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
         if(class(p_temp[1])=="numeric") {
           p_temp <- unlist(p_temp)
         } else {
-          p_temp <- new("mpfr", unlist(p_temp))
+          p_temp <- methods::new("mpfr", unlist(p_temp))
         }
         p <- optimizeAPA::plogis_APA(sum(pdet[i,] * B_p)+sum(p_temp), precBits = precBits)
         g1_t <- drbinomAPA(x = Y[i,t], size = (0:K)*red[i,1], prob = p, red = red[i,t], precBits = precBits)
@@ -1165,22 +1165,22 @@ tp_MAT_APA <- function(M, omeg, B_o, omet, B_ot, gamm, B_g, gamt, B_gt, red, PAR
   if(class(o_temp[1])=="numeric") {
     o_temp <- unlist(o_temp)
   } else {
-    o_temp <- new("mpfr", unlist(o_temp))
+    o_temp <- methods::new("mpfr", unlist(o_temp))
   }
   if(class(g_temp[1])=="numeric") {
     g_temp <- unlist(g_temp)
   } else {
-    g_temp <- new("mpfr", unlist(g_temp))
+    g_temp <- methods::new("mpfr", unlist(g_temp))
   }
   if(class(B_g[1])=="numeric") {
     B_g <- unlist(B_g)
   } else {
-    B_g <- new("mpfr", unlist(B_g))
+    B_g <- methods::new("mpfr", unlist(B_g))
   }
   if(class(B_o[1])=="numeric") {
     B_o <- unlist(B_o)
   } else {
-    B_o <- new("mpfr", unlist(B_o))
+    B_o <- methods::new("mpfr", unlist(B_o))
   }
   if(PARALLELIZE) {
     M <- foreach(a = K1-1, .combine = rbind, .packages = "Rmpfr", "optimizeAPA") %dopar% {
