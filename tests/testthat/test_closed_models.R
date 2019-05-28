@@ -21,7 +21,7 @@ test_that("testing against unmarked", {
                                   K = 7,
                                   starts=c(log(25),0),
                                   method="DFP",
-                                  APA=FALSE, maxSteps=100, tolerance = 10^-3)
+                                  APA=FALSE, maxSteps=100, tolerance = 10^-5)
     )
 
     # time2 <- system.time(
@@ -30,7 +30,7 @@ test_that("testing against unmarked", {
     #                               K = 7,
     #                               starts=c(log(25),0),
     #                               method="DFP",
-    #                               APA=TRUE, precBits=128)
+    #                               APA=TRUE, precBits=128, tolerance = 10^-5)
     # )
     #
     # time3 <- system.time({

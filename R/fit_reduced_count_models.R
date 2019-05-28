@@ -243,6 +243,7 @@ drbinomAPA <- function(x, size, prob, red, precBits=128, log=FALSE) {
     } else {
       pt[i] <- pbinom_APA(x = end, n = size[i], p = prob, precBits=precBits) - pbinom_APA(x = start, n = size[i], p = prob, precBits = precBits)
     }
+
   }
   pt[size0] <- 0
   if(log) {
@@ -396,8 +397,9 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
         ni <- max(Y[i,])
         for(Ni in ni:K[i,1]) {
           lit <- 1
+          pt <- plogis(sum(B_p*pdet[i,]))
           for(t in 1:T) {
-            lit <- lit*drbinom(x = Y[i,t], size = Ni*red[i,1], prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
+            lit <- lit*drbinom(x = Y[i,t], size = Ni*red[i,1], prob = pt, red=red[i,1])
           }
           li <- li + lit*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
         }
@@ -412,8 +414,9 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
         ni <- max(Y[i,])
         for(Ni in ni:K[i,1]) {
           lit <- 1
+          pt <- plogis(sum(B_p*pdet[i,]))
           for(t in 1:T) {
-            lit <- lit*drbinom(x = Y[i,t], size = Ni*red[i,1], prob = plogis(sum(B_p*pdet[i,])), red=red[i,1])
+            lit <- lit*drbinom(x = Y[i,t], size = Ni*red[i,1], prob = pt, red=red[i,1])
             #print(paste("lit:", as.numeric(lit)))
           }
           li <- li + lit*drpois(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1])
@@ -423,6 +426,8 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
       }
     }
   } else { # DO APA CALCULATIONS
+    if(!require(Rmpfr)) { stop("Error, cannot load package Rmpfr") }
+
     # extract lambda estimates from par, setup lambda covariate matrix lamb, and covariate vector B_l
     lamb <- Rmpfr::mpfrArray(matrix(rep(1,times=R), ncol=1), dim = c(R,1), precBits=precBits) # covariate coefficients for lambda
     B_l <- Rmpfr::mpfr(par[1], precBits=precBits) # covariates for lambda
@@ -452,13 +457,13 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
         ni <- max(Y[i,])
         for(Ni in ni:K[i,1]) {
           lit <- Rmpfr::mpfr(1,precBits=precBits)
+          pt <- optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits)
           for(t in 1:T) {
-            pit <- optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits)
-            lit <- lit*(drbinomAPA(x = Y[i,t],
-                                             size = Ni,
-                                             prob = pit,
-                                             red=red[i,1],
-                                             precBits = precBits))
+            lit <- lit*(drbinomAPA(x    = Y[i,t],
+                                   size = Ni,
+                                   prob = pt,
+                                   red  = red[i,1],
+                                   precBits = precBits))
           }
           li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
 
@@ -474,13 +479,13 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
         ni <- max(Y[i,])
         for(Ni in ni:K[i,1]) {
           lit <- Rmpfr::mpfr(1,precBits=precBits)
+          pit <- optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits)
           for(t in 1:T) {
-            pit <- optimizeAPA::plogis_APA(sum(B_p*pdet[i,]), precBits = precBits)
-            lit <- lit*(drbinomAPA(x = Y[i,t],
-                                             size = Ni,
-                                             prob = pit,
-                                             red=red[i,1],
-                                             precBits = precBits))
+            lit <- lit*(drbinomAPA(x    = Y[i,t],
+                                   size = Ni,
+                                   prob = pit,
+                                   red  = red[i,1],
+                                   precBits = precBits))
           }
           li <- li + lit*drpoisAPA(x = Ni, lambda = exp(sum(B_l*lamb[i,])), red=red[i,1], precBits = precBits)
         }
