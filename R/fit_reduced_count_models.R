@@ -99,12 +99,8 @@ max_r <- function(nit, threshold=1.10) {
 #' pop
 #' @export
 gen_Nmix_closed <- function(num_sites,num_times,lambda,pdet) {
-  U    = num_sites
-  T    = num_times
-  lamb = lambda
-
-  Ntemp <- c(rep(rpois(n=U,lambda = lamb),times=T))
-  Ni    <- matrix(data=Ntemp, nrow = U, ncol = T)
+  Ntemp <- c(rep(rpois(n=num_sites,lambda = lambda),times=num_times))
+  Ni    <- matrix(data=Ntemp, nrow = num_sites, ncol = num_times)
 
   nit   <- Ni
   nit[] <- vapply(Ni, function(x) { rbinom(size = x, n = 1, prob = pdet) }, numeric(1))
@@ -353,7 +349,7 @@ drpois  <- function(x, lambda, red, log=FALSE) {
 
 #' Used to calculate the negative of the log likelihood for closed population models.
 #' @param par Vector with two elements, log(lambda) and logis(pdet). If l_s_c is not NULL, need length(par) = length(l_s_c) + 2, for the B0...BK coefficients of lambda (B0 is the constant term coefficient).
-#' @param nit data.frame with R*T rows, and 3 columns: "site", "time", and "count". Deprecated: R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
+#' @param nit R by T matrix of reduced counts with R sites/rows and T sampling occassions/columns.
 #' @param l_s_c list of lambda site covariates (list of vectors of length R (number of sites))
 #' @param p_s_c list of pdet site covariates (list of vectors of length R (number of sites))
 #' @param K   Upper bound on summations (input reduced count upper bound).
@@ -495,9 +491,13 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
   }
 
   if(VERBOSE) {
-    if(!APA) print(paste0("log likelihood: ",l))
+    if(!APA) {
+      print(paste0("log likelihood: ", l))
+      print(paste0("parameters: ", par))
+    }
     if(APA) {
-      print(paste0("log likelihood: ",Rmpfr::formatMpfr(l)))
+      print(paste0("log likelihood: ", Rmpfr::formatMpfr(l)))
+      print(paste0("parameters: ", Rmpfr::formatMpfr(par)))
     }
   }
   return(-1*l)
@@ -1102,6 +1102,18 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
   }
 
   if(VERBOSE) { print(paste0("log likelihood: ",as.numeric(ll))) }
+
+  if(VERBOSE) {
+    if(!APA) {
+      print(paste0("log likelihood: ", ll))
+      print(paste0("parameters: ", par))
+    }
+    if(APA) {
+      print(paste0("log likelihood: ", Rmpfr::formatMpfr(ll)))
+      print(paste0("parameters: ", Rmpfr::formatMpfr(par)))
+    }
+  }
+
   return(-1*ll)
 }
 
