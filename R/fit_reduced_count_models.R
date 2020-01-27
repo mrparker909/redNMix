@@ -267,11 +267,12 @@ pbinom_APA <- function(x, n, p, log.p=FALSE, precBits=128) {
   for(N in n) {
     i <- i+1
     if(x > N)      result[i] <- Rmpfr::mpfr(1, precBits)
-    else if(x < 0) result[i] <- Rmpfr::mpfr(0, precBits) else {
-      result[i] <- Rmpfr::pbetaI(q = p, shape1 = x + 1, shape2 = N - x, log.p = log.p, lower.tail = FALSE, precBits = precBits)
+    else if(x < 0) result[i] <- Rmpfr::mpfr(0, precBits)
+    else {
+      result[i] <- Rmpfr::pbetaI(q = p, shape1 = x + 1, shape2 = N - x, log.p = log.p, lower.tail = FALSE, precBits = 100*precBits)
+      result[i] <- Rmpfr::mpfr(result[i], precBits)
     }
   }
-
   return(result)
 }
 
