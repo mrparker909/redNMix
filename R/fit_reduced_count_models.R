@@ -213,26 +213,41 @@ drbinomAPA <- function(x, size, prob, red, precBits=128, log=FALSE) {
   if(class(prob)!="mpfr") {
     prob <- Rmpfr::mpfr(prob, precBits)
   }
-  if(length(x)!=length(size)) {
-    if(length(x) < length(size)) {
-      x <- rep(x,length(size))
-    } else {
-      size <- rep(size, length(x))
-    }
-  }
 
   size0 <- which(size==0)
-  pt <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(length(x),1))
+  pt <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(max(length(x),length(size)),1))
   i <- 0
-  for(X in x) {
-    i <- i+1
+  if(length(size)==1) {
+    for(X in x) {
+      i <- i+1
 
-    start <- Rmpfr::pmax(0,round2(X*red - red/2)) # start <- Rmpfr::pmax(0,round2(X*red - red/2)-1)
-    end   <- Rmpfr::pmin(size[i],round2(X*red + red/2)-1)
-    if(length(end)==0) end = round2(X*red + red/2)-1
+      start <- Rmpfr::pmax(0,round2(X*red - red/2)) # start <- Rmpfr::pmax(0,round2(X*red - red/2)-1)
+      end   <- Rmpfr::pmin(pmax(X,size),round2(X*red + red/2)-1)
+      if(length(end)==0) end = round2(X*red + red/2)-1
 
-    pt[i] = sum(Rmpfr::dbinom(x = start:end, size = size[i], prob = prob))
+      temp_pt = Rmpfr::mpfr(0, precBits)
+      for(temp_x in start:end) {
+        temp_pt = temp_pt + Rmpfr::dbinom(x = temp_x, size = size, prob = prob)
+      }
+      #pt[i] = sum(Rmpfr::dbinom(x = start:end, size = size, prob = prob))
+      pt[i] = temp_pt
+    }
+  } else {
+    for(N in size) {
+      i <- i+1
 
+      start <- Rmpfr::pmax(0,round2(x*red - red/2)) # start <- Rmpfr::pmax(0,round2(X*red - red/2)-1)
+      end   <- Rmpfr::pmin(pmax(x,N),round2(x*red + red/2)-1)
+      if(length(end)==0) end = round2(x*red + red/2)-1
+
+      temp_pt = Rmpfr::mpfr(0, precBits)
+      for(temp_x in start:end) {
+        temp_pt = temp_pt + Rmpfr::dbinom(x = temp_x, size = N, prob = prob)
+      }
+      pt[i] = temp_pt
+      #pt[i] = sum(Rmpfr::dbinom(x = start:end, size = N, prob = prob))
+
+    }
   }
   pt[size0] <- 0
   if(log) {
