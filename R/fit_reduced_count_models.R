@@ -499,6 +499,8 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
     }
   }
 
+  if(is.nan(l)) { l <- -Inf }
+
   if(VERBOSE) {
     if(!APA) {
       print(paste0("log likelihood: ", l))
@@ -1110,6 +1112,8 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
     ll <- sum(ll_i)
   }
 
+  if(is.nan(ll)) { ll <- -Inf }
+
   if(VERBOSE) { print(paste0("log likelihood: ",as.numeric(ll))) }
 
   if(VERBOSE) {
@@ -1122,6 +1126,7 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
       print(paste0("parameters: ", Rmpfr::formatMpfr(par)))
     }
   }
+
 
   return(-1*ll)
 }
