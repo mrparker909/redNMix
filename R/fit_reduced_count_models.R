@@ -222,23 +222,16 @@ drbinomAPA <- function(x, size, prob, red, precBits=128, log=FALSE) {
   }
 
   size0 <- which(size==0)
-
   pt <- Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(length(x),1))
-
   i <- 0
   for(X in x) {
     i <- i+1
-    # if(class(X)!="mpfr") {
-    #   X <- Rmpfr::mpfr(X, precBits)
-    # }
-    start <- Rmpfr::pmax(0,ceiling(X*red - red/2)-1)
-    end   <- Rmpfr::pmin(size[i],round2(X*red + red/2)-1)
 
-    if(start==0 & end < red) {
-      pt[i] <- pbinom_APA(x = end, n = size[i], p = prob, precBits=precBits)
-    } else {
-      pt[i] <- pbinom_APA(x = end, n = size[i], p = prob, precBits=precBits) - pbinom_APA(x = start, n = size[i], p = prob, precBits = precBits)
-    }
+    start <- Rmpfr::pmax(0,round2(X*red - red/2)) # start <- Rmpfr::pmax(0,round2(X*red - red/2)-1)
+    end   <- Rmpfr::pmin(size[i],round2(X*red + red/2)-1)
+    if(length(end)==0) end = round2(X*red + red/2)-1
+
+    pt[i] = sum(Rmpfr::dbinom(x = start:end, size = size[i], prob = prob))
 
   }
   pt[size0] <- 0
