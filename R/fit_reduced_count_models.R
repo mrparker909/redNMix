@@ -503,11 +503,11 @@ red_Like_closed <- function(par, nit, l_s_c, p_s_c, K, red, FUN=round, VERBOSE=F
 
   if(VERBOSE) {
     if(typeof(l)=="double") {
-      print(paste0("log likelihood: ", l))
-      print(paste0("parameters: ", par))
+      try(print(paste0("log likelihood: ", l)))
+      try(print(paste0("parameters: ", par)))
     } else if(APA) {
-      print(paste0("log likelihood: ", Rmpfr::formatMpfr(l)))
-      print(paste0("parameters: ", Rmpfr::formatMpfr(par)))
+      try(print(paste0("log likelihood: ", Rmpfr::formatMpfr(l))))
+      try(print(paste0("parameters: ", Rmpfr::formatMpfr(par))))
     }
   }
 
@@ -1116,11 +1116,11 @@ red_Like_open <- function(par, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_
 
   if(VERBOSE) {
     if(typeof(ll)=="double") {
-      print(paste0("log likelihood: ", ll))
-      print(paste0("parameters: ", par))
+      try(print(paste0("log likelihood: ", ll)))
+      try(print(paste0("parameters: ", par)))
     } else if(APA) {
-      print(paste0("log likelihood: ", Rmpfr::formatMpfr(ll)))
-      print(paste0("parameters: ", Rmpfr::formatMpfr(par)))
+      try(print(paste0("log likelihood: ", Rmpfr::formatMpfr(ll))))
+      try(print(paste0("parameters: ", Rmpfr::formatMpfr(par))))
     }
   }
 
