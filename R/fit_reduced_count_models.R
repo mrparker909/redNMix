@@ -1234,6 +1234,7 @@ tp_MAT_APA <- function(M, omeg, B_o, omet, B_ot, gamm, B_g, gamt, B_gt, red, PAR
 #' @param APA    If true, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.
 #' @param precBits If APA=TRUE, then this will specify the number of bits of precision.
 #' @param tolerance specifies tolerance for convergence (defulat is 10^-6), all components of estimated gradient must be less than tolerance for convergence. If APA=TRUE, then tolerance can be made very small (eg 10^-20) using: tolerance=Rmpfr::mpfr(10^-20, precBits=128). NOTE: currently tolerance is only used if method="DFP".
+#' @param outFile If not NULL, name of file for saving algorithm progress (overwritten at each iteration).
 #' @param ...    Additional input for optim.
 #' @examples
 #' START_PARALLEL(num_cores=4)
@@ -1242,7 +1243,7 @@ tp_MAT_APA <- function(M, omeg, B_o, omet, B_ot, gamm, B_g, gamt, B_gt, red, PAR
 #' out2 <- fit_red_Nmix_closed(Y$nit, red=c(10,10,10,10,20,20,40,40), K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
-fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", APA=FALSE, precBits=128, tolerance=10^-6, ...) {
+fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, method="BFGS", APA=FALSE, precBits=128, tolerance=10^-6, outFile=NULL, ...) {
 
   Y_m <- nit
   row.names(Y_m) <- 1:nrow(nit)
@@ -1340,7 +1341,8 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
       names(opt$par) <- c(lamb_names, pdet_names)
     }
   } else {
-    opt <- optimizeAPA::optim_DFP_APA(starts      = starts,
+    opt <- optimizeAPA::optim_DFP_APA(
+                         starts      = starts,
                          func        = red_Like_closed,
                          nit         = Y_m,
                          l_s_c       = lambda_site_covariates,
@@ -1352,6 +1354,7 @@ fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_cova
                          APA         = TRUE,
                          tolerance   = tolerance,
                          precBits    = precBits,
+                         outFile     = outFile,
                          ...)
 
     if(length(opt$x)==length(c(lamb_names, pdet_names))) {

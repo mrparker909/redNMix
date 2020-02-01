@@ -24,6 +24,15 @@ test_that("testing against unmarked", {
                                   APA=FALSE, maxSteps=100, tolerance = 10^-5)
     )
 
+    mod2 <- fit_red_Nmix_closed(nit = Y$nit,
+                                red = 1,
+                                K = 7,
+                                starts=c(log(25),0),
+                                method="DFP",
+                                APA=TRUE, maxSteps=100, tolerance = 10^-5, outFile = "./test_outputFile.csv")
+
+    expect_equal(file.exists("./test_outputFile.csv"), T)
+
     # time2 <- system.time(
     #   mod2 <- fit_red_Nmix_closed(nit = Y$nit,
     #                               red = 1,
