@@ -179,6 +179,18 @@ plogis(out$x[2])
 
 The estimates are reasonably close to the true parameter values of 5 and 0.8.
 
+If we want to inspect the convergence paths of the parameters, we should add `keepValues=TRUE` when model fitting:
+
+
+```r
+out2 <- redNMix::fit_red_Nmix_closed(nit=pop1$nit, red=1, K=20, tolerance=10^-2, keepValues=TRUE)
+optimizeAPA::plotConvergence(out2)
+```
+
+![](README_files/figure-html/unnamed-chunk-14-1.png)<!-- -->
+
+Notice that we also set the tolerance down from the default of 10^-6 to 10^-2. This reduced the number of iterations from 32 to 6. In this case the parameter estimates don't change much, so the lower tolerance suffices.
+
 # How to Cite
 
 Parker, M.R.P. (2020). redNMix: An R package for N-mixtures models. R package version 1.0.1. https://github.com/mrparker909/redNMix
