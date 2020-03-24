@@ -2,10 +2,18 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{END_PARALLEL}
 \alias{END_PARALLEL}
-\title{Used to end parallel computing.}
+\title{END_PARALLEL}
 \usage{
 END_PARALLEL()
 }
 \description{
 Used to end parallel computing.
+}
+\examples{
+START_PARALLEL(4)
+Y    <- gen_Nmix_closed(16,8,50,0.5)
+out  <- fit_red_Nmix_closed(Y$nit, red=10, K=100, starts = c(log(40),boot::logit(0.5)), PARALLELIZE=TRUE)
+END_PARALLEL()
+
+out
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{START_PARALLEL}
 \alias{START_PARALLEL}
-\title{Used to initialize parallel computing (useful for likelihood calculations which can be computationally intensive).}
+\title{START_PARALLEL}
 \usage{
 START_PARALLEL(num_cores)
 }
@@ -11,4 +11,12 @@ START_PARALLEL(num_cores)
 }
 \description{
 Used to initialize parallel computing (useful for likelihood calculations which can be computationally intensive).
+}
+\examples{
+START_PARALLEL(4)
+Y    <- gen_Nmix_closed(16,8,50,0.5)
+out  <- fit_red_Nmix_closed(Y$nit, red=10, K=100, starts = c(log(40),boot::logit(0.5)), PARALLELIZE=TRUE)
+END_PARALLEL()
+
+out
 }

@@ -2,14 +2,15 @@
 % Please edit documentation in R/fit_reduced_count_models.R
 \name{fit_red_Nmix_open}
 \alias{fit_red_Nmix_open}
-\title{Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.}
+\title{fit_red_Nmix_open}
 \usage{
 fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
   gamma_site_covariates = NULL, omega_site_covariates = NULL,
   pdet_site_covariates = NULL, gamma_time_covariates = NULL,
   omega_time_covariates = NULL, pdet_time_covariates = NULL, red, K,
   starts = NULL, VERBOSE = FALSE, PARALLELIZE = FALSE, APA = FALSE,
-  precBits = 128, tolerance = 10^-6, method = "BFGS", ...)
+  precBits = 128, tolerance = 10^-6, method = "DFP",
+  outFile = NULL, ...)
 }
 \arguments{
 \item{nit}{R by T matrix of full counts with R sites/rows and T sampling occassions/columns.}
@@ -28,45 +29,57 @@ fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
 
 \item{pdet_time_covariates}{Either NULL (no pdet time covariates) or a list of vectors of length T, where each vector represents one time covariate, and where the vector entries correspond to covariate values for each time. Note that the covariate structure is assumed to be logit(omega_i) = B0 + B1 &ast; V1_i + B2 &ast; V2_i + ...}
 
-\item{red}{reduction factor, either a number or a vector of length R.}
+\item{red}{Reduction factor r, either a number or a vector of length R (specifying reduction factors for each site), or an R by T matrix of reduction factors for each observation.}
 
-\item{K}{Upper bound on summations, will be reduced by reduction factor red.}
+\item{K}{Upper bound on summations, will be reduced by reduction factor red. Either a single number, or a vector of length R (specifying K for each site).}
 
 \item{starts}{Vector with four elements (if no covariates), log(lambda), log(gamma), logit(omega), and logit(pdet). When there are X covariates B_x for a parameter, will need X+1 starting values for that parameter (+1 for the constant term B0).}
 
-\item{VERBOSE}{If TRUE, prints the log likelihood to console at each optim iteration.}
+\item{VERBOSE}{If TRUE, prints the log likelihood to console at each iteration of the optimization (unless optim is being used).}
 
 \item{PARALLELIZE}{If TRUE, calculation will be split over threads by sites and times. This will not improve computation time if there are no site or time covariates. Will use as many threads as have been made available (initialize with START_PARALLEL(num_cores)).}
 
-\item{APA}{If true, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.}
+\item{APA}{If TRUE, will use arbitrary precision arithmetic in the likelihood calculations. Use precBits to specify the number of bits of precision.}
 
-\item{precBits}{If APA=TRUE, then this will specify the number of bits of precision.}
+\item{precBits}{If APA=TRUE, then this will specify the number of bits of precision for arbitrary precision arithmetic.}
 
-\item{tolerance}{specifies tolerance for convergence (defulat is 10^-6), all components of estimated gradient must be less than tolerance for convergence. If APA=TRUE, then tolerance can be made very small (eg 10^-20) using: tolerance=Rmpfr::mpfr(10^-20, precBits=128). NOTE: currently tolerance is only used if method="DFP".}
+\item{tolerance}{Specifies tolerance for convergence (defulat is 10^-6), all components of estimated gradient must be less than tolerance for convergence. If APA=TRUE, then tolerance can be made very small (eg 10^-20) using: tolerance=Rmpfr::mpfr(10^-20, precBits=128). NOTE: currently tolerance is only used if method="DFP".}
 
-\item{...}{Additional input for optim.}
+\item{method}{Optimization method to use. Default is "DFP", and is the only method implemented for APA. When APA=FALSE, can use method="BFGS" to use optim().}
+
+\item{outFile}{If not NULL, name of file for saving algorithm progress (overwritten at each iteration).}
+
+\item{...}{Additional input for optimization algorithm.}
 }
 \description{
-Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet). Uses optim.
+Find maximum likelihood estimates for model parameters log(lambda), log(gamma), logit(omega), and logit(pdet).
 }
 \examples{
-
 Y   <- gen_Nmix_open(num_sites = 5, num_times = 5, lambda = 20, pdet = 0.7, omega = 0.7, gamma = 2)
-out <- fit_red_Nmix_open(nit = Y$nit, red = c(1), K = 40, starts = c(0.5, 0.5, 0.5, 0.5))
+out <- fit_red_Nmix_open(nit = Y$nit, red = 3, K = 40, starts = c(0.5, 0.5, 0.5, 0.5))
+
+# lambda estimate:
+exp(out$par[1])
+# gamma estimate:
+exp(out$par[2])
+# omega estimate:
+plogis(out$par[3])
+# pdet estimate:
+plogis(out$par[4])
 
 
 # example with site covariates:
-Y1 <- gen_Nmix_open(num_sites = 2, num_times = 5, lambda = 10, gamma = 5, omega = 0.50, pdet = 0.75)
-Y2 <- gen_Nmix_open(num_sites = 3, num_times = 5, lambda = 5, gamma = 10, omega = 0.75, pdet = 0.50)
-Y  <- rbind(Y1$nit, Y2$nit)
-START_PARALLEL(num_cores=5)
-mod1 <- fit_red_Nmix_open(nit = Y,
-                          lambda_site_covariates = list(l1=c(0,0,1,1,1)),
-                          gamma_site_covariates  = list(gs=c(0,0,1,1,1)),
+Y1 <- gen_Nmix_open(num_sites = 4, num_times = 5, lambda = 10, gamma = 5, omega = 0.50, pdet = 0.75)
+Y2 <- gen_Nmix_open(num_sites = 4, num_times = 5, lambda = 5, gamma = 10, omega = 0.75, pdet = 0.50)
+Y  <- rbind_pops(Y1, Y2)
+START_PARALLEL(num_cores=4)
+mod1 <- fit_red_Nmix_open(nit = Y$nit,
+                          lambda_site_covariates = list(l1=c(0,0,0,0,1,1,1,1)),
+                          gamma_site_covariates  = list(gs=c(0,0,0,0,1,1,1,1)),
                           gamma_time_covariates  = NULL,
-                          omega_site_covariates  = list(os=c(0,0,1,1,1)),
+                          omega_site_covariates  = list(os=c(0,0,0,0,1,1,1,1)),
                           omega_time_covariates  = NULL,
-                          pdet_site_covariates   = list(ps=c(0,0,1,1,1)),
+                          pdet_site_covariates   = list(ps=c(0,0,0,0,1,1,1,1)),
                           pdet_time_covariates   = NULL,
                           red = 4,
                           K   = 50,
