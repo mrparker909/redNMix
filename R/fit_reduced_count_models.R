@@ -111,7 +111,7 @@ tp_MAT_APA <- function(M, omeg, B_o, omet, B_ot, gamm, B_g, gamt, B_gt, red, PAR
 #' out2 <- fit_red_Nmix_closed(Y$nit, red=matrix(c(10,10,10,10,20,20,40,40),nrow=8, ncol=8), K=300, starts = c(log(250),boot::logit(0.5)), PARALLELIZE=TRUE)
 #' END_PARALLEL()
 #' @export
-fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128, tolerance=10^-6, method="DFP", outFile=NULL, ...) {
+fit_red_Nmix_closed <- function(nit, lambda_site_covariates=NULL, pdet_site_covariates=NULL, red=1, K, starts=c(1,0), VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128, tolerance=10^-6, method="DFP", outFile=NULL, ...) {
 
   Y_m <- nit
   row.names(Y_m) <- 1:nrow(nit)
@@ -332,7 +332,7 @@ END_PARALLEL <- function() {
 #' # pdet sites 3, 4, and 5 estimate:
 #' plogis(sum(mod1$par[7:8]))
 #' @export
-fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, pdet_time_covariates=NULL, red, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128, tolerance=10^-6, method="DFP", outFile=NULL, ...) {
+fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, pdet_time_covariates=NULL, red=1, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128, tolerance=10^-6, method="DFP", outFile=NULL, ...) {
   if(length(red)==1 | length(red) == nrow(nit)) {
     red <- matrix(red, nrow = nrow(nit), ncol=ncol(nit))
   }

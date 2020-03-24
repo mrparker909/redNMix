@@ -5,7 +5,7 @@
 \title{fit_red_Nmix_closed}
 \usage{
 fit_red_Nmix_closed(nit, lambda_site_covariates = NULL,
-  pdet_site_covariates = NULL, red, K, starts = c(1, 0),
+  pdet_site_covariates = NULL, red = 1, K, starts = c(1, 0),
   VERBOSE = FALSE, PARALLELIZE = FALSE, APA = FALSE,
   precBits = 128, tolerance = 10^-6, method = "DFP",
   outFile = NULL, ...)

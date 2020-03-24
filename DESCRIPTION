@@ -1,9 +1,10 @@
 Package: redNMix
 Type: Package
-Title: Package For Fitting and Analyzing Reduced/Grouped Count N-Mixture Models
+Title: An R package for N-mixtures models.
 Version: 1.0.1
 Author: Matthew R. P. Parker
-Description: Package For Fitting and Analyzing Reduced/Grouped Count N-Mixture Models.
+Date: 2020
+Description: Package for fitting and analyzing reduced/grouped counts N-Mixture Models.
 License: Creative Commons
 Encoding: UTF-8
 LazyData: true

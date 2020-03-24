@@ -7,9 +7,9 @@
 fit_red_Nmix_open(nit, lambda_site_covariates = NULL,
   gamma_site_covariates = NULL, omega_site_covariates = NULL,
   pdet_site_covariates = NULL, gamma_time_covariates = NULL,
-  omega_time_covariates = NULL, pdet_time_covariates = NULL, red, K,
-  starts = NULL, VERBOSE = FALSE, PARALLELIZE = FALSE, APA = FALSE,
-  precBits = 128, tolerance = 10^-6, method = "DFP",
+  omega_time_covariates = NULL, pdet_time_covariates = NULL, red = 1,
+  K, starts = NULL, VERBOSE = FALSE, PARALLELIZE = FALSE,
+  APA = FALSE, precBits = 128, tolerance = 10^-6, method = "DFP",
   outFile = NULL, ...)
 }
 \arguments{
