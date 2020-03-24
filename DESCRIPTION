@@ -5,6 +5,7 @@ Version: 1.0.1
 Author: Matthew R. P. Parker
 Date: 2020
 Description: Package for fitting and analyzing reduced/grouped counts N-Mixture Models.
+URL: https://github.com/mrparker909/redNMix
 License: Creative Commons
 Encoding: UTF-8
 LazyData: true
