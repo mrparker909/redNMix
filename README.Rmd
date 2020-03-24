@@ -11,7 +11,7 @@ set.seed(12345)
 
 # redNMix
 
-_redNMix_ is an R package for fitting $N$-mixture models. The package has several unique features, allowing for:
+_redNMix_ is an R package for fitting N-mixture models. The package has several unique features, allowing for:
 
 1. grouped/coarse counts data  
 2. parallel processing  
@@ -29,7 +29,7 @@ library(redNMix)
 
 # Generate Data
 
-There are helper functions for quickly generating $N$-mixtures data. These are particularily useful for testing and for simulation studies.
+There are helper functions for quickly generating N-mixtures data. These are particularily useful for testing and for simulation studies.
 
 ## Closed Population
 
