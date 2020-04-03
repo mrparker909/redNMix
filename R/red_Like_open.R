@@ -1,3 +1,72 @@
+red_Like_open_unfixed <- function(par, omega=1,gamma=1, omeg_index, gamm_index, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128) {
+   ll <- red_Like_open(par=par, nit=nit,
+                      l_s_c=l_s_c, g_s_c=g_s_c,
+                      g_t_c=g_t_c, o_s_c=o_s_c,
+                      o_t_c=o_t_c, p_s_c=p_s_c,
+                      p_t_c=p_t_c, K=K,
+                      red=red, VERBOSE=VERBOSE,
+                      PARALLELIZE=PARALLELIZE, APA=APA,
+                      precBits=precBits)
+  return(ll)
+}
+
+red_Like_open_fixed_omega <- function(par, omega=1,gamma, omeg_index, gamm_index, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128) {
+  par2 = numeric(1+length(par))
+  if(APA) {
+    par2 = Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(1,1+length(par)))
+  }
+
+  for(i in 1:length(par2)) {
+    if(i == omeg_index) {
+      par2[i] = omega
+    } else {
+      j=i
+      if(j >= omeg_index) j = j-1
+      par2[i] = par[j]
+    }
+  }
+
+  ll <- red_Like_open(par=par2, nit=nit,
+                      l_s_c=l_s_c, g_s_c=g_s_c,
+                      g_t_c=g_t_c, o_s_c=o_s_c,
+                      o_t_c=o_t_c, p_s_c=p_s_c,
+                      p_t_c=p_t_c, K=K,
+                      red=red, VERBOSE=VERBOSE,
+                      PARALLELIZE=PARALLELIZE, APA=APA,
+                      precBits=precBits)
+  return(ll)
+}
+
+
+
+red_Like_open_fixed_gamma <- function(par, omega=1,gamma=0, omeg_index, gamm_index, nit, l_s_c, g_s_c, g_t_c, o_s_c, o_t_c, p_s_c, p_t_c, K, red, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128) {
+  par2 = numeric(1+length(par))
+  if(APA) {
+    par2 = Rmpfr::mpfrArray(x = 0, precBits = precBits, dim = c(1,1+length(par)))
+  }
+
+  for(i in 1:length(par2)) {
+    if(i == gamm_index) {
+      par2[i] = gamma
+    } else {
+      j=i
+      if(j >= gamm_index) j = j-1
+      par2[i] = par[j]
+    }
+  }
+
+  ll <- red_Like_open(par=par2, nit=nit,
+                      l_s_c=l_s_c, g_s_c=g_s_c,
+                      g_t_c=g_t_c, o_s_c=o_s_c,
+                      o_t_c=o_t_c, p_s_c=p_s_c,
+                      p_t_c=p_t_c, K=K,
+                      red=red, VERBOSE=VERBOSE,
+                      PARALLELIZE=PARALLELIZE, APA=APA,
+                      precBits=precBits)
+  return(ll)
+}
+
+
 #' @title red_Like_open
 #' @description   Used to calculate the negative of the log likelihood for open population models.
 #' @param par     Vector with four elements (if no covariates), log(lambda), log(gamma), logis(omega), and logis(pdet). If there are covariates, include a starting value for each covariate. Order is: lambda, lambda site covariates, gamma, gamma site covariates, gamma time covariates, , omega site covariates, omega time covariates, pdet site covariates, pdet time covariates.

@@ -280,6 +280,8 @@ END_PARALLEL <- function() {
 #' @param tolerance   Specifies tolerance for convergence (defulat is 10^-6), all components of estimated gradient must be less than tolerance for convergence. If APA=TRUE, then tolerance can be made very small (eg 10^-20) using: tolerance=Rmpfr::mpfr(10^-20, precBits=128). NOTE: currently tolerance is only used if method="DFP".
 #' @param method      Optimization method to use. Default is "DFP", and is the only method implemented for APA. When APA=FALSE, can use method="BFGS" to use optim().
 #' @param outFile     If not NULL, name of file for saving algorithm progress (overwritten at each iteration).
+#' @param fixed_omega If not NULL, the constant value to set omega to (probability between 0 and 1).
+#' @param fixed_gamma If not NULL, the constant value to set gamma to (non-negative).
 #' @param ...         Additional input for optimization algorithm.
 #' @examples
 #' Y   <- gen_Nmix_open(num_sites = 5, num_times = 5, lambda = 20, pdet = 0.7, omega = 0.7, gamma = 2)
@@ -332,7 +334,14 @@ END_PARALLEL <- function() {
 #' # pdet sites 3, 4, and 5 estimate:
 #' plogis(sum(mod1$par[7:8]))
 #' @export
-fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, pdet_time_covariates=NULL, red=1, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128, tolerance=10^-6, method="DFP", outFile=NULL, ...) {
+fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covariates=NULL, omega_site_covariates=NULL, pdet_site_covariates=NULL, gamma_time_covariates=NULL, omega_time_covariates=NULL, pdet_time_covariates=NULL, red=1, K, starts=NULL, VERBOSE=FALSE, PARALLELIZE=FALSE, APA=FALSE, precBits=128, tolerance=10^-6, method="DFP", outFile=NULL, fixed_omega=NULL, fixed_gamma=NULL, ...) {
+  if(!is.null(fixed_omega)) {
+    fixed_omega = boot::logit(fixed_omega)
+  }
+  if(!is.null(fixed_gamma)) {
+    fixed_gamma = log(fixed_gamma)
+  }
+
   if(length(red)==1 | length(red) == nrow(nit)) {
     red <- matrix(red, nrow = nrow(nit), ncol=ncol(nit))
   }
@@ -352,174 +361,210 @@ fit_red_Nmix_open <- function(nit, lambda_site_covariates=NULL, gamma_site_covar
   omeg_starts <- c(0)
   pdet_starts <- c(0)
 
-   lamb_names  <- c("B_l_0")
-   gamm_names  <- c("B_g_0")
-   omeg_names  <- c("B_o_0")
-   pdet_names  <- c("B_p_0")
+  lamb_names  <- c("B_l_0")
+  gamm_names  <- c("B_g_0")
+  omeg_names  <- c("B_o_0")
+  pdet_names  <- c("B_p_0")
 
-   if(!is.null(lambda_site_covariates)) {
-     if(!is.list(lambda_site_covariates)) {stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
-     if(any( !unlist(lapply(X = lambda_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
-       stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
-     }
-     # update default starting values
-     lamb_starts <- rep(1, times=length(lambda_site_covariates)+1)
-     numCov      <- length(lamb_starts)-1
-     lamb_names  <- c(lamb_names, paste0("B_l_s_",1:numCov))
-   }
+  if(!is.null(lambda_site_covariates)) {
+    if(!is.list(lambda_site_covariates)) {stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+    if(any( !unlist(lapply(X = lambda_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+      stop("invalid lambda_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+    }
+    # update default starting values
+    lamb_starts <- rep(1, times=length(lambda_site_covariates)+1)
+    numCov      <- length(lamb_starts)-1
+    lamb_names  <- c(lamb_names, paste0("B_l_s_",1:numCov))
+  }
 
-   if(!is.null(gamma_site_covariates)) {
-     if(!is.list(gamma_site_covariates)) {stop("invalid gamma_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
-     if(any( !unlist(lapply(X = gamma_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
-       stop("invalid gamma_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
-     }
-     # update default starting values
-     gamm_starts <- rep(1, times=length(gamma_site_covariates)+1)
-     numCov      <- length(gamm_starts)-1
-     gamm_names  <- c(gamm_names, paste0("B_g_s_",1:numCov))
-   }
+  if(!is.null(gamma_site_covariates)) {
+    if(!is.list(gamma_site_covariates)) {stop("invalid gamma_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+    if(any( !unlist(lapply(X = gamma_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+      stop("invalid gamma_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+    }
+    # update default starting values
+    gamm_starts <- rep(1, times=length(gamma_site_covariates)+1)
+    numCov      <- length(gamm_starts)-1
+    gamm_names  <- c(gamm_names, paste0("B_g_s_",1:numCov))
+  }
 
-   if(!is.null(gamma_time_covariates)) {
-     if(!is.list(gamma_time_covariates)) {stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
-     if(any( !unlist(lapply(X = gamma_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
-       stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
-     }
-     # update default starting values
-     gamm_starts <- c(gamm_starts, rep(1, times=length(gamma_time_covariates)))
-     numCov      <- length(gamm_starts)-length(gamm_names)
-     gamm_names  <- c(gamm_names, paste0("B_g_t_",1:numCov))
-   }
+  if(!is.null(gamma_time_covariates)) {
+    if(!is.list(gamma_time_covariates)) {stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
+    if(any( !unlist(lapply(X = gamma_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
+      stop("invalid gamma_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
+    }
+    # update default starting values
+    gamm_starts <- c(gamm_starts, rep(1, times=length(gamma_time_covariates)))
+    numCov      <- length(gamm_starts)-length(gamm_names)
+    gamm_names  <- c(gamm_names, paste0("B_g_t_",1:numCov))
+  }
 
-   if(!is.null(omega_site_covariates)) {
-     if(!is.list(omega_site_covariates)) {stop("invalid omega_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
-     if(any( !unlist(lapply(X = omega_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
-       stop("invalid omega_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
-     }
-     # update default starting values
-     omeg_starts <- rep(0, times=length(omega_site_covariates)+1)
-     numCov      <- length(omeg_starts)-1
-     omeg_names  <- c(omeg_names, paste0("B_o_s_",1:numCov))
-   }
+  if(!is.null(omega_site_covariates)) {
+    if(!is.list(omega_site_covariates)) {stop("invalid omega_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+    if(any( !unlist(lapply(X = omega_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+      stop("invalid omega_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+    }
+    # update default starting values
+    omeg_starts <- rep(0, times=length(omega_site_covariates)+1)
+    numCov      <- length(omeg_starts)-1
+    omeg_names  <- c(omeg_names, paste0("B_o_s_",1:numCov))
+  }
 
-   if(!is.null(omega_time_covariates)) {
-     if(!is.list(omega_time_covariates)) {stop("invalid omega_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
-     if(any( !unlist(lapply(X = omega_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
-       stop("invalid omega_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
-     }
-     # update default starting values
-     omeg_starts <- c(omeg_starts, rep(0, times=length(omega_time_covariates)))
-     numCov      <- length(omeg_starts)-length(omeg_names)
-     omeg_names  <- c(omeg_names, paste0("B_o_t_",1:numCov))
-   }
+  if(!is.null(omega_time_covariates)) {
+    if(!is.list(omega_time_covariates)) {stop("invalid omega_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
+    if(any( !unlist(lapply(X = omega_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
+      stop("invalid omega_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
+    }
+    # update default starting values
+    omeg_starts <- c(omeg_starts, rep(0, times=length(omega_time_covariates)))
+    numCov      <- length(omeg_starts)-length(omeg_names)
+    omeg_names  <- c(omeg_names, paste0("B_o_t_",1:numCov))
+  }
 
-   if(!is.null(pdet_site_covariates)) {
-     if(!is.list(pdet_site_covariates)) {stop("invalid pdet_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
-     if(any( !unlist(lapply(X = pdet_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
-       stop("invalid pdet_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
-     }
-     # update default starting values
-     pdet_starts <- rep(0, times=length(pdet_site_covariates)+1)
-     numCov      <- length(pdet_starts)-1
-     pdet_names  <- c(pdet_names, paste0("B_p_s_",1:numCov))
-   }
-
-
-   if(!is.null(pdet_time_covariates)) {
-     if(!is.list(pdet_time_covariates)) {stop("invalid pdet_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
-     if(any( !unlist(lapply(X = pdet_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
-       stop("invalid pdet_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
-     }
-     # update default starting values
-     pdet_starts <- c(pdet_starts, rep(0, times=length(pdet_time_covariates)))
-     numCov      <- length(pdet_starts)-length(pdet_names)
-     pdet_names  <- c(pdet_names, paste0("B_p_t_",1:numCov))
-   }
+  if(!is.null(pdet_site_covariates)) {
+    if(!is.list(pdet_site_covariates)) {stop("invalid pdet_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")}
+    if(any( !unlist(lapply(X = pdet_site_covariates, FUN = function(X) {is.vector(X) && length(X)==nrow(nit)})) )) {
+      stop("invalid pdet_site_covariates - must be either NULL or a list of vectors of length R (number of sites).")
+    }
+    # update default starting values
+    pdet_starts <- rep(0, times=length(pdet_site_covariates)+1)
+    numCov      <- length(pdet_starts)-1
+    pdet_names  <- c(pdet_names, paste0("B_p_s_",1:numCov))
+  }
 
 
-   if(is.null(starts)) {
-     starts <- c(lamb_starts, gamm_starts, omeg_starts, pdet_starts)
-   }
+  if(!is.null(pdet_time_covariates)) {
+    if(!is.list(pdet_time_covariates)) {stop("invalid pdet_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")}
+    if(any( !unlist(lapply(X = pdet_time_covariates, FUN = function(X) {is.vector(X) && length(X)==(ncol(nit))})) )) {
+      stop("invalid pdet_time_covariates - must be either NULL or a list of vectors of length T (number of sampling occasions, last entry will be ignored).")
+    }
+    # update default starting values
+    pdet_starts <- c(pdet_starts, rep(0, times=length(pdet_time_covariates)))
+    numCov      <- length(pdet_starts)-length(pdet_names)
+    pdet_names  <- c(pdet_names, paste0("B_p_t_",1:numCov))
+  }
 
-   Y_m <- reduction(nit, red)
+  if(is.null(starts)) {
+    starts <- c(lamb_starts, gamm_starts, omeg_starts, pdet_starts)
+  }
 
-   NAMES <- c(lamb_names, gamm_names, omeg_names, pdet_names)
+  # parameter indices:
+  lamb_index <- 1
+  gamm_index <- 1 + length(lamb_starts)
+  omeg_index <- gamm_index + length(gamm_starts)
+  pdet_index <- omeg_index + length(omeg_starts)
 
-   opt <- NULL
-   if(!APA) {
-     if(method=="DFP"){
-       opt <- optimizeAPA::optim_DFP_NAPA(starts  = starts,
-                                          func    = red_Like_open,
-                                          nit     = Y_m,
-                                          l_s_c   = lambda_site_covariates,
-                                          g_s_c   = gamma_site_covariates,
-                                          g_t_c   = gamma_time_covariates,
-                                          o_s_c   = omega_site_covariates,
-                                          o_t_c   = omega_time_covariates,
-                                          p_s_c   = pdet_site_covariates,
-                                          p_t_c   = pdet_time_covariates,
-                                          K           = red_K,
-                                          red         = red,
-                                          VERBOSE     = VERBOSE,
-                                          PARALLELIZE = PARALLELIZE,
-                                          APA         = FALSE,
-                                          precBits    = precBits,
-                                          tolerance   = tolerance,
-                                          outFile     = outFile,
-                                          ...)
-       if(length(opt$x)==length(NAMES)) {
-         rownames(opt$x) <- NAMES
-       } else {
-         for(i in 1:length(opt$x)) {
-           rownames(opt$x[[i]]) <- NAMES
-         }
-       }
-     } else {
-       opt <- optim(par     = starts,
-                    fn      = red_Like_open,
-                    nit     = Y_m,
-                    l_s_c   = lambda_site_covariates,
-                    g_s_c   = gamma_site_covariates,
-                    g_t_c   = gamma_time_covariates,
-                    o_s_c   = omega_site_covariates,
-                    o_t_c   = omega_time_covariates,
-                    p_s_c   = pdet_site_covariates,
-                    p_t_c   = pdet_time_covariates,
-                    K       = red_K,
-                    red     = red,
-                    VERBOSE = VERBOSE,
-                    method  = method,
-                    PARALLELIZE = PARALLELIZE,
-                    ...)
-       names(opt$par) <- NAMES
-     }
-   } else { # APA
-     if(method != "DFP") { warning("USING DFP METHOD, only the DFP optimization method is currently implemented for APA")}
-     opt <- optimizeAPA::optim_DFP_APA(starts  = starts,
-                                       func    = red_Like_open,
-                                       nit     = Y_m,
-                                       l_s_c   = lambda_site_covariates,
-                                       g_s_c   = gamma_site_covariates,
-                                       g_t_c   = gamma_time_covariates,
-                                       o_s_c   = omega_site_covariates,
-                                       o_t_c   = omega_time_covariates,
-                                       p_s_c   = pdet_site_covariates,
-                                       p_t_c   = pdet_time_covariates,
-                                       K           = red_K,
-                                       red         = red,
-                                       VERBOSE     = VERBOSE,
-                                       PARALLELIZE = PARALLELIZE,
-                                       APA         = TRUE,
-                                       precBits    = precBits,
-                                       tolerance   = tolerance,
-                                       ...)
-     if(length(opt$x)==length(NAMES)) {
-       rownames(opt$x) <- NAMES
-     } else {
-       for(i in 1:length(opt$x)) {
-         rownames(opt$x[[i]]) <- NAMES
-       }
-     }
-   }
+  Y_m <- reduction(nit, red)
 
-   return(opt)
+  NAMES <- c(lamb_names, gamm_names, omeg_names, pdet_names)
+
+  if(length(NAMES) != length(starts)) {
+    stop(paste0("ERROR: starts must be length: ",length(NAMES), ", not: ", length(starts)))
+  }
+
+
+  opt <- NULL
+
+  FUNC = red_Like_open_unfixed
+  STARTS = starts
+
+  if(!is.null(fixed_omega) & is.null(fixed_gamma)) {
+    FUNC = red_Like_open_fixed_omega
+    STARTS = starts[-omeg_index]
+    NAMES = NAMES[-omeg_index]
+  } else if(is.null(fixed_omega) & !is.null(fixed_gamma)) {
+    FUNC = red_Like_open_fixed_gamma
+    STARTS = starts[-gamm_index]
+    NAMES = NAMES[-gamm_index]
+  }
+
+  if(!APA) {
+    if(method=="DFP"){
+      opt <- optimizeAPA::optim_DFP_NAPA(starts  = STARTS,
+                                         func    = FUNC,
+                                         nit     = Y_m,
+                                         l_s_c   = lambda_site_covariates,
+                                         g_s_c   = gamma_site_covariates,
+                                         g_t_c   = gamma_time_covariates,
+                                         o_s_c   = omega_site_covariates,
+                                         o_t_c   = omega_time_covariates,
+                                         p_s_c   = pdet_site_covariates,
+                                         p_t_c   = pdet_time_covariates,
+                                         K           = red_K,
+                                         red         = red,
+                                         VERBOSE     = VERBOSE,
+                                         PARALLELIZE = PARALLELIZE,
+                                         APA         = FALSE,
+                                         precBits    = precBits,
+                                         tolerance   = tolerance,
+                                         outFile     = outFile,
+                                         omeg_index  = omeg_index,
+                                         gamm_index  = gamm_index,
+                                         omega       = fixed_omega,
+                                         gamma       = fixed_gamma,
+                                         ...)
+      if(length(opt$x)==length(NAMES) & !typeof(opt$x)=="list") {
+        rownames(opt$x) <- NAMES
+      } else {
+        for(i in 1:length(opt$x)) {
+          rownames(opt$x[[i]]) <- NAMES
+        }
+      }
+    } else {
+      opt <- optim(par     = STARTS,
+                   fn      = FUNC,
+                   nit     = Y_m,
+                   l_s_c   = lambda_site_covariates,
+                   g_s_c   = gamma_site_covariates,
+                   g_t_c   = gamma_time_covariates,
+                   o_s_c   = omega_site_covariates,
+                   o_t_c   = omega_time_covariates,
+                   p_s_c   = pdet_site_covariates,
+                   p_t_c   = pdet_time_covariates,
+                   K       = red_K,
+                   red     = red,
+                   VERBOSE = VERBOSE,
+                   method  = method,
+                   PARALLELIZE = PARALLELIZE,
+                   omeg_index  = omeg_index,
+                   gamm_index  = gamm_index,
+                   omega       = fixed_omega,
+                   gamma       = fixed_gamma,
+                   ...)
+      names(opt$par) <- NAMES
+    }
+  } else { # APA
+    if(method != "DFP") { warning("USING DFP METHOD, only the DFP optimization method is currently implemented for APA")}
+    opt <- optimizeAPA::optim_DFP_APA(starts  = STARTS,
+                                      func    = FUNC,
+                                      nit     = Y_m,
+                                      l_s_c   = lambda_site_covariates,
+                                      g_s_c   = gamma_site_covariates,
+                                      g_t_c   = gamma_time_covariates,
+                                      o_s_c   = omega_site_covariates,
+                                      o_t_c   = omega_time_covariates,
+                                      p_s_c   = pdet_site_covariates,
+                                      p_t_c   = pdet_time_covariates,
+                                      K           = red_K,
+                                      red         = red,
+                                      VERBOSE     = VERBOSE,
+                                      PARALLELIZE = PARALLELIZE,
+                                      APA         = TRUE,
+                                      precBits    = precBits,
+                                      tolerance   = tolerance,
+                                      omeg_index  = omeg_index,
+                                      gamm_index  = gamm_index,
+                                      omega       = fixed_omega,
+                                      gamma       = fixed_gamma,
+                                      ...)
+    if(!typeof(opt$x)=="list" | class(opt$x)=="mpfrMatrix") {
+      rownames(opt$x) <- NAMES
+    } else {
+      for(i in 1:length(opt$x)) {
+        rownames(opt$x[[i]]) <- NAMES
+      }
+    }
+  }
+
+  return(opt)
 }
